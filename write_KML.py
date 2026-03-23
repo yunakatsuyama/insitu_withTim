@@ -45,16 +45,16 @@ def read_config(filename):
 
     return config
 
-def get_device_section(config):
+# def get_device_section(config):
 
-    device = config['Default']['device'].lower()
+#     device = config['Default']['device'].lower()
 
-    if device == "aeris":
-        return "AERIS"
-    elif device == "losgatos":
-        return "GGA"
-    else:
-        raise ValueError(f"Unsupported device: {device}")
+#     # if device == "aeris":
+#     #     return "AERIS"
+#     # elif device == "losgatos":
+#     #     return "GGA"
+#     # else:
+#     #     raise ValueError(f"Unsupported device: {device}")
     
     
 def sync_buffer_to_local(buffer_dir, local_dir, copied):
@@ -307,13 +307,13 @@ def write_current_pointer(all_files, active_index, output_file):
 
     os.replace(tmp, output_file)
 
-def extract_coordinates(cols, config):
+def extract_coordinates(cols, config, ):
 
-    section = get_device_section(config)
+    device = config['Default']['device']
 
-    lat_idx = int(config[section]['lat'])
-    lon_idx = int(config[section]['lon'])
-    alt_idx = int(config[section]['alt'])
+    lat_idx = int(config[device]['lat'])
+    lon_idx = int(config[device]['lon'])
+    alt_idx = int(config[device]['alt'])
 
     lat = float(cols[lat_idx])
     lon = float(cols[lon_idx])
@@ -322,19 +322,17 @@ def extract_coordinates(cols, config):
     return lat, lon, alt
 
 def extract_species_values(cols, config):
-
-    section = get_device_section(config)
-
-    species = config[section]['species'].split()
+    device = config['Default']['device']
+    species = config[device]['species'].split()
 
     values = {}
 
     for sp in species:
 
-        if sp not in config[section]:
+        if sp not in config[device]:
             continue
 
-        col_index = int(config[section][sp])
+        col_index = int(config[device][sp])
 
         try:
             values[sp] = float(cols[col_index])
@@ -428,23 +426,15 @@ def write_KML(config_filename):
     "point_counter": 0,
     "kmlfile": f"{kml_savefolder}/flighttrack_1.kml",
     "all_files": [f"{kml_savefolder}/flighttrack_1.kml"]
-    }+
+    }
     
-+
+    init_track_kml(flight_state["kmlfile"])
 
-    init_track_kml(flight_state["kmlfile"])+
-    
-+
-
-    write_current_pointer(+
-    
-        flight_state["all_files"],+
-        
-        active_index=0,+
-        
-        output_file=f"{kml_savefolder}/current_fli+
-        ghttrack.kml"
-    )+
+    write_current_pointer(
+        flight_state["all_files"],
+        active_index=0,
+        output_file=f"{kml_savefolder}/current_flighttrack.kml"
+    )
     
     # =============================+
     
@@ -452,10 +442,9 @@ def write_KML(config_filename):
     
     # =============================+
     
-    copied_files = set(os.listdir(bufferfolder))+
+    copied_files = set(os.listdir(bufferfolder))
     
-    copied_track_files = set(os.listdir(flighttrac+
-    k_buffer))
+    copied_track_files = set(os.listdir(flighttrack_buffer))
     
     while True:
 
