@@ -73,12 +73,23 @@ def sync_buffer_to_local(buffer_dir, local_dir, copied):
             dst = os.path.join(local_dir, f)
 
             try:
-                shutil.copy2(src, dst)
+                #shutil.copy2(src, dst)
+                shutil.move(src, dst)  # now using the .move method to have an empty buffer_dir
                 copied.add(f)
                 new_files.append(f)
 
             except FileNotFoundError:
                 continue
+
+            except shutil.Error:
+                # Should handel duplicate files by appending _1, will break again if it happens again ...
+                name, ext = os.path.splitext(f)
+                new_name = f"{name}_1{ext}"
+                dst = os.path.join(local_dir, new_name)
+
+                shutil.move(src, dst)
+                copied.add(new_name)
+                new_files.append(new_name)
 
     return new_files
 
