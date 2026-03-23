@@ -12,7 +12,7 @@ import configparser
 
 from pynmeagps import NMEAReader
 from contextlib import contextmanager
-# from aeris_device import aeris_methane_ethene_serial
+
 
 
 
@@ -199,10 +199,10 @@ def read_device(cfg, queue, event, date):
                                 str(measnum), '\n'])
             
             flightstr = '  '.join([
-            latest_gps[3],
-            latest_gps[0],
-            latest_gps[1],
-            latest_gps[2],
+            latest_gps[3], # time
+            latest_gps[0], # lat
+            latest_gps[1], # lon
+            latest_gps[2], # alt
             str(measnum),
             '\n'
             ])

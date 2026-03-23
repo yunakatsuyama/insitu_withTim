@@ -45,16 +45,6 @@ def read_config(filename):
 
     return config
 
-# def get_device_section(config):
-
-#     device = config['Default']['device'].lower()
-
-#     # if device == "aeris":
-#     #     return "AERIS"
-#     # elif device == "losgatos":
-#     #     return "GGA"
-#     # else:
-#     #     raise ValueError(f"Unsupported device: {device}")
     
     
 def sync_buffer_to_local(buffer_dir, local_dir, copied):
@@ -79,6 +69,8 @@ def sync_buffer_to_local(buffer_dir, local_dir, copied):
 
             except FileNotFoundError:
                 continue
+
+
 
     return new_files
 
@@ -345,9 +337,9 @@ def extract_species_values(cols, config):
 #  MAIN 
 # ===============
 def write_KML(config_filename):
-
+    
     config = read_config(config_filename)
-
+    device = config['Default']['device']
     # -------------------------
     # Paths
     # -------------------------
@@ -366,8 +358,8 @@ def write_KML(config_filename):
     # -------------------------
     # Device settings
     # -------------------------
-    species = config['Device']['species'].split()
-    nbins = config.getint('Device', 'nbins')
+    species = config[device]['species'].split()
+    nbins = config.getint(device, 'nbins')
 
     print("Species:", species)
 
@@ -378,10 +370,10 @@ def write_KML(config_filename):
 
         key = f"{specie}range"
 
-        if key not in config['Device']:
+        if key not in config[device]:
             raise ValueError(f"Missing {key} in config")
 
-        vmin, vmax = [float(v) for v in config['Device'][key].split()]
+        vmin, vmax = [float(v) for v in config[device][key].split()]
 
         ranges[specie] = (vmin, vmax)
 
@@ -561,4 +553,5 @@ def write_KML(config_filename):
                 
                 
 if __name__ == '__main__':
-    write_KML('insitu.cfg')                   
+    while True :
+        write_KML('insitu.cfg')                   
