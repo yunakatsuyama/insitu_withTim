@@ -10,7 +10,6 @@ def datasave():
     runlogging()
 
 def plot():
-    
     write_KML(config_filename=cfg)  
 
 if __name__ == "__main__":

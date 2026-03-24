@@ -219,7 +219,7 @@ def add_point(lat, lon, name, value, alt, vmin, vmax, nbins, filename="merge2.km
     data_dict: {column_name: value, ...}
     """
     
-    style_id = value_to_bin(value, vmin, vmax, nbins)   # how to deal with seveeral spieces ???? 
+    style_id = value_to_bin(value, vmin, vmax, nbins)   # how to deal with several spieces ????
     
     # table_rows = "".join([f"<tr><td>{k}</td><td>{v}</td></tr>" for k, v in data_dict.items()])
     # html_table = f"<table border='1'>{table_rows}</table>"
@@ -370,9 +370,9 @@ def write_KML(config_filename):
     os.makedirs(kml_savefolder, exist_ok=True)
 
     # Reset LocalBuffer for this run
-    if os.path.exists(reprocessfolder):
-        shutil.rmtree(reprocessfolder)
-    os.makedirs(reprocessfolder)
+    #if os.path.exists(reprocessfolder):
+    #    shutil.rmtree(reprocessfolder)
+    #os.makedirs(reprocessfolder)
     
     # -------------------------
     # Device settings
@@ -386,6 +386,7 @@ def write_KML(config_filename):
     ranges = {}
 
     for specie in species:
+
 
         key = f"{specie}range"
 
@@ -403,9 +404,21 @@ def write_KML(config_filename):
 
     state = {}
 
+    # Check if program was run before
+    initial_index = 1
+    old_files = os.listdir(f"{kml_savefolder}")
+    if old_files:
+        print('Old files found in kml folder')
+        max_index = max(
+            int(f.rsplit('_', 1)[1][:-4])
+            for f in old_files
+            if f.endswith('.kml') and f.rsplit('_', 1)[1][:-4].isdigit()
+        )
+        initial_index += max_index
+
     for specie in species:
 
-        file_index = 1
+        file_index = initial_index
 
         kmlfile = f"{kml_savefolder}/{specie}_{file_index}.kml"
 
@@ -433,10 +446,10 @@ def write_KML(config_filename):
     # Initialize flight track
     # ----------------------------
     flight_state = {
-    "file_index": 1,
+    "file_index": initial_index,
     "point_counter": 0,
-    "kmlfile": f"{kml_savefolder}/flighttrack_1.kml",
-    "all_files": [f"{kml_savefolder}/flighttrack_1.kml"]
+    "kmlfile": f"{kml_savefolder}/flighttrack_{initial_index}.kml",
+    "all_files": [f"{kml_savefolder}/flighttrack_{initial_index}.kml"]
     }
     
     init_track_kml(flight_state["kmlfile"])
@@ -459,7 +472,7 @@ def write_KML(config_filename):
     
     while True:
 
-        # Copy only new buffer files
+        # Move only new buffer files
         new_files = sync_buffer_to_local(
             buffer_dir=bufferfolder,
             local_dir=reprocessfolder,
