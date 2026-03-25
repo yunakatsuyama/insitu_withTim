@@ -143,6 +143,7 @@ def read_device(cfg, queue, event, date):
     parity=cfg[device_type]['parity']
     stopbits=cfg[device_type].getint('stopbits')
     separator = cfg[device_type]['separator']
+    external_gps = eval(cfg[device_type]['external_gps'])
     
     gps_buffer = collections.deque(maxlen=timelag)
 
@@ -193,10 +194,15 @@ def read_device(cfg, queue, event, date):
             # outstr, flightstr = formatter(
             #     cfg, data, delayed_gps, latest_gps, measnum
             # )
-            
-            outstr = '  '.join(['  '.join(data),
-                                '  '.join(delayed_gps[:3]),
-                                str(measnum), '\n'])
+
+            if external_gps:
+                outstr_list = ['  '.join(data), '  '.join(delayed_gps[:3]), str(measnum), '\n']
+            elif not external_gps:
+                outstr_list = ['  '.join(data), str(measnum), '\n']
+            else:
+                raise ValueError(f'external_gps is either "True" or "False", currently {external_gps}')
+
+            outstr = '  '.join(outstr_list)
             
             flightstr = '  '.join([
             latest_gps[3], # time

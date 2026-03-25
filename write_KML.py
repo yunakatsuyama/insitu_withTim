@@ -64,7 +64,14 @@ def sync_buffer_to_local(buffer_dir, local_dir, copied):
 
             try:
                 #shutil.copy2(src, dst)
-                shutil.move(src, dst)
+                # shutil.move(src, dst)
+                for _ in range(5):
+                    try:
+                        shutil.move(src, dst)
+                        break
+                    except PermissionError:
+                        print(f'{f} move had a permission error, file still busy.')
+                        time.sleep(0.1)
                 copied.add(f)
                 new_files.append(f)
 
@@ -231,7 +238,15 @@ def add_point(lat, lon, name, value, alt, vmin, vmax, nbins, filename="merge2.km
     with open(tmp, "w", encoding="utf-8") as f:
         f.write(new_text)
 
-    os.replace(tmp, filename)
+    # os.replace(tmp, filename)
+    for _ in range(5):  # tries 5 times to write the file, incase the program is still writing the last file
+        try:
+            os.replace(tmp, filename)
+            break
+        except PermissionError:
+            time.sleep(0.1)
+    else:
+        print(f"WARNING: Could not write {filename}")
 
 def add_track_point(lat, lon, alt, filename):
 
@@ -349,14 +364,52 @@ def write_KML(config_filename):
     bufferfolder = config['Paths']['remotefolder']
     kml_savefolder = config['Paths']['kmlpath']
     flighttrack_buffer = config['Paths']['flighttrackfolder']
-    
-    os.makedirs(kml_savefolder, exist_ok=True)
+    reprocess = eval(config['Paths']['reprocess'])
+    empty_reprocess_folder = eval(config['Paths']['empty_reprocess_folder'])
+    emtpy_remote_folder = eval(config['Paths']['emtpy_remote_folder'])
+
+    if empty_reprocess_folder:
+        if os.path.exists(reprocessfolder):
+            print(f'Deleting all files in {reprocessfolder}!')
+            shutil.rmtree(reprocessfolder)
+        else:
+            pass
+    elif not empty_reprocess_folder:
+        pass
+    else:
+        raise ValueError(f'empty_reprocess_folder is either "True" or "False", currently {empty_reprocess_folder}')
+
+    if emtpy_remote_folder:
+        if os.path.exists(emtpy_remote_folder):
+            print(f'Deleting all files in {emtpy_remote_folder}!')
+            shutil.rmtree(emtpy_remote_folder)
+        else:
+            pass
+    elif not emtpy_remote_folder:
+        pass
+    else:
+        raise ValueError(f'emtpy_remote_folder is either "True" or "False", currently {emtpy_remote_folder}')
+
+    if reprocess:
+        print('Clearing old KML files and reprocessing new KML files...')
+        # Reset KML files
+        if os.path.exists(kml_savefolder):
+            shutil.rmtree(kml_savefolder)
+
+        # Move LocalBuffer to Buffer
+        sync_buffer_to_local(reprocessfolder, bufferfolder, set())
+        print('Moved files from LocalBuffer to Buffer.')
+    elif not reprocess:
+        pass
+    else:
+        raise ValueError(f'reprocess is either "True" or "False", currently {reprocess}')
 
     # Reset LocalBuffer for this run
     #if os.path.exists(reprocessfolder):
     #    shutil.rmtree(reprocessfolder)
     #os.makedirs(reprocessfolder)
-    
+
+    os.makedirs(kml_savefolder, exist_ok=True)
     # -------------------------
     # Device settings
     # -------------------------
