@@ -249,6 +249,10 @@ def add_point(lat, lon, name, value, alt, vmin, vmax, nbins, filename="merge2.km
 <Placemark>
   <name>{name}</name>
   <styleUrl>#bin_{style_id}</styleUrl>
+  <ExtendedData><Data name="concentration">
+    <value>{value}</value>
+  </Data>
+  </ExtendedData>
   <Point>
     <extrude>1</extrude>
     <altitudeMode>relativeToGround</altitudeMode>
