@@ -45,16 +45,6 @@ def read_config(filename):
 
     return config
 
-# def get_device_section(config):
-
-#     device = config['Default']['device'].lower()
-
-#     # if device == "aeris":
-#     #     return "AERIS"
-#     # elif device == "losgatos":
-#     #     return "GGA"
-#     # else:
-#     #     raise ValueError(f"Unsupported device: {device}")
     
     
 def sync_buffer_to_local(buffer_dir, local_dir, copied):
@@ -73,12 +63,15 @@ def sync_buffer_to_local(buffer_dir, local_dir, copied):
             dst = os.path.join(local_dir, f)
 
             try:
-                shutil.copy2(src, dst)
+                #shutil.copy2(src, dst)
+                shutil.move(src, dst)
                 copied.add(f)
                 new_files.append(f)
 
             except FileNotFoundError:
                 continue
+
+
 
     return new_files
 
@@ -314,7 +307,8 @@ def extract_coordinates(cols, config, ):
     lat_idx = int(config[device]['lat'])
     lon_idx = int(config[device]['lon'])
     alt_idx = int(config[device]['alt'])
-
+    
+    # print(len(cols))
     lat = float(cols[lat_idx])
     lon = float(cols[lon_idx])
     alt = float(cols[alt_idx])
@@ -345,9 +339,9 @@ def extract_species_values(cols, config):
 #  MAIN 
 # ===============
 def write_KML(config_filename):
-
+    
     config = read_config(config_filename)
-
+    device = config['Default']['device']
     # -------------------------
     # Paths
     # -------------------------
@@ -359,15 +353,15 @@ def write_KML(config_filename):
     os.makedirs(kml_savefolder, exist_ok=True)
 
     # Reset LocalBuffer for this run
-    if os.path.exists(reprocessfolder):
-        shutil.rmtree(reprocessfolder)
-    os.makedirs(reprocessfolder)
+    #if os.path.exists(reprocessfolder):
+    #    shutil.rmtree(reprocessfolder)
+    #os.makedirs(reprocessfolder)
     
     # -------------------------
     # Device settings
     # -------------------------
-    species = config['Device']['species'].split()
-    nbins = config.getint('Device', 'nbins')
+    species = config[device]['species'].split()
+    nbins = config.getint(device, 'nbins')
 
     print("Species:", species)
 
@@ -378,10 +372,10 @@ def write_KML(config_filename):
 
         key = f"{specie}range"
 
-        if key not in config['Device']:
+        if key not in config[device]:
             raise ValueError(f"Missing {key} in config")
 
-        vmin, vmax = [float(v) for v in config['Device'][key].split()]
+        vmin, vmax = [float(v) for v in config[device][key].split()]
 
         ranges[specie] = (vmin, vmax)
 
@@ -442,9 +436,11 @@ def write_KML(config_filename):
     
     # =============================+
     
-    copied_files = set(os.listdir(bufferfolder))
-    
-    copied_track_files = set(os.listdir(flighttrack_buffer))
+    # copied_files = set(os.listdir(bufferfolder))
+    copied_files = set()
+    #copied_track_files = set(os.listdir(flighttrack_buffer))
+    copied_track_files = set()
+
     
     while True:
 
@@ -561,4 +557,5 @@ def write_KML(config_filename):
                 
                 
 if __name__ == '__main__':
-    write_KML('insitu.cfg')                   
+    while True :
+        write_KML('insitu.cfg')                   
