@@ -67,13 +67,24 @@ def sync_buffer_to_local(buffer_dir, local_dir, copied):
                 # shutil.move(src, dst)
                 for _ in range(5):
                     try:
-                        shutil.move(src, dst)
+                        print(f"filesiye {os.path.getsize(src)}")
+                        if os.path.getsize(src) > 0 :
+                            shutil.move(src, dst)
+                            while True:
+                                time.sleep(0.1)
+                                if os.path.getsize(dst) > 0:
+                                    break
+                            copied.add(f)
+                            new_files.append(f)
+                        else:
+                            print("remove")
+                            os.remove(buffer_dir)    
+                            
                         break
                     except PermissionError:
                         print(f'{f} move had a permission error, file still busy.')
                         time.sleep(0.1)
-                copied.add(f)
-                new_files.append(f)
+                
 
             except FileNotFoundError:
                 continue
@@ -100,11 +111,16 @@ def generate_color_scale(nbins):
     colors = []
 
     for i in range(nbins):
-        ratio = i / (nbins - 1)
-
-        r = int(255 * ratio)
-        g = 0
-        b = int(255 * (1 - ratio))
+        ratio = i / (nbins - 1) 
+        
+        if ratio > 0.5:
+            r = int(255 * ratio*2)
+            g = int(255 * (1 - ratio*2)) 
+            b = 0
+        else:
+            r = 0
+            g = int(255 * ratio)
+            b = int(255 * (1 - ratio))
 
         # KML format: AABBGGRR
         color = f"ff{b:02x}{g:02x}{r:02x}"
@@ -655,6 +671,7 @@ def write_KML(config_filename):
             except (ValueError, IndexError):
                 continue
             
+            
             # current flight position
             # KML file update
             update_current_position(
@@ -664,8 +681,9 @@ def write_KML(config_filename):
                 alt,
                 name="Current Aircraft Position",
                 filename=current_position_kml
-            )    
-            
+            ) 
+             
+            """
             # flighttrack
             # add point
             add_track_point(
@@ -675,6 +693,7 @@ def write_KML(config_filename):
                 flight_state["kmlfile"]
             )
 
+            
             flight_state["point_counter"] += 1
             
             # rotate file after 300 points (only for flighttrack)
@@ -695,6 +714,7 @@ def write_KML(config_filename):
                     active_index=flight_state["file_index"] - 1,
                     output_file=f"{kml_savefolder}/current_flighttrack.kml"
                 )
+            """
                 
                 
 if __name__ == '__main__':
