@@ -63,7 +63,8 @@ def sync_buffer_to_local(buffer_dir, local_dir, copied):
             dst = os.path.join(local_dir, f)
 
             try:
-                shutil.copy2(src, dst)
+                #shutil.copy2(src, dst)
+                shutil.move(src, dst)
                 copied.add(f)
                 new_files.append(f)
 
@@ -185,7 +186,34 @@ def init_track_kml(filename):
         f.write(content)
     os.replace(tmp, filename)
     
+    
+def init_current_kml(config, filename):
+    # get icon
+    iconfolder = config['Paths']['iconfolder']
+    icon_path = os.path.abspath(
+        os.path.join(iconfolder, "airports.png")
+    )
+    
+    content = f"""<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2">
+<Document>
+<name>Current Position</name>
+<!-- CURRENT_POINT -->
+<Style id="currentStyle">
+<IconStyle>
+    <scale>0.6</scale>
+    <Icon>
+    <href>{icon_path}</href>
+    </Icon>
+</IconStyle>
+</Style>
+</Document>
+</kml>
+"""
+    with open(filename, "w", encoding="utf-8") as f:
+        f.write(content)
         
+                
 def value_to_bin(value, vmin, vmax, nbins):
     if value <= vmin:
         return 0
@@ -251,7 +279,47 @@ def add_track_point(lat, lon, alt, filename):
 
     os.replace(tmp, filename)
     
+def update_current_position(config, lat, lon, alt, name, filename):
+    tmp = filename + ".tmp"
     
+    iconfolder = config['Paths']['iconfolder']
+    icon_path = os.path.abspath(
+        os.path.join(iconfolder, "airports.png")
+    )
+    
+    placemark = f"""
+<Placemark>
+<name>{name}</name>
+<styleUrl>#currentStyle</styleUrl>
+<Point>
+    <altitudeMode>absolute</altitudeMode>
+    <coordinates>{lon},{lat},{alt}</coordinates>
+</Point>
+</Placemark>
+"""
+
+    content = f"""<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2">
+<Document>
+<Style id="currentStyle">
+<IconStyle>
+    <scale>0.6</scale>
+    <Icon>
+    <href>{icon_path}</href>
+    </Icon>
+</IconStyle>
+</Style>
+<name>Current Position</name>
+{placemark}
+</Document>
+</kml>
+"""
+
+    with open(tmp, "w", encoding="utf-8") as f:
+        f.write(content)
+
+    os.replace(tmp, filename)
+        
 def write_current_pointer(all_files, active_index, output_file):
     """
     all_files: list of KML filenames in order [merge3d_1.kml, merge3d_2.kml, ...]
@@ -306,7 +374,8 @@ def extract_coordinates(cols, config, ):
     lat_idx = int(config[device]['lat'])
     lon_idx = int(config[device]['lon'])
     alt_idx = int(config[device]['alt'])
-
+    
+    # print(len(cols))
     lat = float(cols[lat_idx])
     lon = float(cols[lon_idx])
     alt = float(cols[alt_idx])
@@ -351,9 +420,9 @@ def write_KML(config_filename):
     os.makedirs(kml_savefolder, exist_ok=True)
 
     # Reset LocalBuffer for this run
-    if os.path.exists(reprocessfolder):
-        shutil.rmtree(reprocessfolder)
-    os.makedirs(reprocessfolder)
+    #if os.path.exists(reprocessfolder):
+    #    shutil.rmtree(reprocessfolder)
+    #os.makedirs(reprocessfolder)
     
     # -------------------------
     # Device settings
@@ -428,15 +497,23 @@ def write_KML(config_filename):
         output_file=f"{kml_savefolder}/current_flighttrack.kml"
     )
     
+    # ----------------------------------
+    # Initialize current flight position
+    # -----------------------------------
+    current_position_kml = f"{kml_savefolder}/current_position.kml"
+    init_current_kml(config, current_position_kml)   
+     
     # =============================+
     
-    # Realtime loop+
+    # Realtime loop
     
     # =============================+
     
-    copied_files = set(os.listdir(bufferfolder))
-    
-    copied_track_files = set(os.listdir(flighttrack_buffer))
+    # copied_files = set(os.listdir(bufferfolder))
+    copied_files = set()
+    #copied_track_files = set(os.listdir(flighttrack_buffer))
+    copied_track_files = set()
+
     
     while True:
 
@@ -508,7 +585,7 @@ def write_KML(config_filename):
 
             print(f"Processed {fname}")
 
-        # For flightrack    
+        # For flightrack  and current flight position 
         for fname in new_track_files:
 
             with open(os.path.join(reprocessfolder + "_track", fname), "r") as f:
@@ -522,7 +599,20 @@ def write_KML(config_filename):
                 alt = float(cols[3])
             except (ValueError, IndexError):
                 continue
-
+            
+            # current flight position
+            # KML file update
+            update_current_position(
+                config,
+                lat,
+                lon,
+                alt,
+                name="Current Aircraft Position",
+                filename=current_position_kml
+            )    
+            
+            # flighttrack
+            # add point
             add_track_point(
                 lat,
                 lon,
@@ -532,7 +622,7 @@ def write_KML(config_filename):
 
             flight_state["point_counter"] += 1
             
-            # rotate file after 300 points
+            # rotate file after 300 points (only for flighttrack)
             if flight_state["point_counter"] >= points_per_file:
 
                 flight_state["point_counter"] = 0

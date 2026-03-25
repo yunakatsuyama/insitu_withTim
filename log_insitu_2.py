@@ -206,6 +206,7 @@ def read_device(cfg, queue, event, date):
             str(measnum),
             '\n'
             ])
+            time.sleep(1)
             print(f'outstr {outstr}')
             print(f'flightstr {flightstr}')
             # ---------------------
