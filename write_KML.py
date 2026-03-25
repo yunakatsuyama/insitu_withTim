@@ -249,7 +249,18 @@ def add_point(lat, lon, name, value, alt, vmin, vmax, nbins, filename="merge2.km
     with open(tmp, "w", encoding="utf-8") as f:
         f.write(new_text)
 
-    os.replace(tmp, filename)
+    # os.replace(tmp, filename)
+    for _ in range(5):  # tries 5 times to write the file, incase the program is still writing the last file
+        try:
+            os.replace(tmp, filename)
+            break
+        except PermissionError:
+            time.sleep(0.1)
+    else:
+        print(f"WARNING: Could not write {filename}")
+
+    return None
+
 
 def add_track_point(lat, lon, alt, filename):
 
@@ -404,21 +415,24 @@ def write_KML(config_filename):
 
     state = {}
 
-    # Check if program was run before
+    """
+    # Check if program was run before, to not override old kml files
     initial_index = 1
     old_files = os.listdir(f"{kml_savefolder}")
     if old_files:
-        print('Old files found in kml folder')
         max_index = max(
             int(f.rsplit('_', 1)[1][:-4])
             for f in old_files
             if f.endswith('.kml') and f.rsplit('_', 1)[1][:-4].isdigit()
         )
         initial_index += max_index
-
+        print(f'Old files found in kml folder, index now {initial_index}.')
+    """
+    
     for specie in species:
 
-        file_index = initial_index
+        #file_index = initial_index
+        file_index = 1
 
         kmlfile = f"{kml_savefolder}/{specie}_{file_index}.kml"
 
@@ -465,11 +479,14 @@ def write_KML(config_filename):
     # Realtime loop+
     
     # =============================+
-    
-    copied_files = set(os.listdir(bufferfolder))
-    
-    copied_track_files = set(os.listdir(flighttrack_buffer))
-    
+
+    # Initialize the copied sets as empty to always also process the existing files in buffer
+    #copied_files = set(os.listdir(bufferfolder))
+    copied_files = set()
+
+    #copied_track_files = set(os.listdir(flighttrack_buffer))
+    copied_track_files = set()
+
     while True:
 
         # Move only new buffer files
@@ -492,7 +509,7 @@ def write_KML(config_filename):
             with open(os.path.join(reprocessfolder, fname), "r") as f:
                 line = f.readline().strip()
 
-            line = line.replace(",", "")
+            line = line.replace(",", "")  # TODO: Shouldn't this be controlled via the seperator config of the device?
             cols = line.split()
 
             lat, lon, alt = extract_coordinates(cols, config)
