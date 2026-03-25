@@ -503,6 +503,8 @@ def write_KML(config_filename):
     current_position_kml = f"{kml_savefolder}/current_position.kml"
     init_current_kml(config, current_position_kml)   
      
+     
+     
     # =============================+
     
     # Realtime loop
