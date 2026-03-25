@@ -197,14 +197,7 @@ def read_device(cfg, queue, event, date):
 
             if external_gps:
                 outstr_list = ['  '.join(data), '  '.join(delayed_gps[:3]), str(measnum), '\n']
-            elif not external_gps:
-                outstr_list = ['  '.join(data), str(measnum), '\n']
-            else:
-                raise ValueError(f'external_gps is either "True" or "False", currently {external_gps}')
-
-            outstr = '  '.join(outstr_list)
-            
-            flightstr = '  '.join([
+                flightstr = '  '.join([
             latest_gps[3], # time
             latest_gps[0], # lat
             latest_gps[1], # lon
@@ -212,6 +205,16 @@ def read_device(cfg, queue, event, date):
             str(measnum),
             '\n'
             ])
+            elif not external_gps:
+                dummy_gps = ['00:00:00.000','+000.00000', '+0000.00000', '00000']
+                outstr_list = ['  '.join(data), *dummy_gps[1:3], str(measnum), '\n']
+                flightstr = '  '.join([*dummy_gps, '\n'])
+            else:
+                raise ValueError(f'external_gps is either "True" or "False", currently {external_gps}')
+
+            outstr = '  '.join(outstr_list)
+            
+            
             time.sleep(1)
             print(f'outstr {outstr}')
             print(f'flightstr {flightstr}')
