@@ -70,7 +70,6 @@ def sync_buffer_to_local(buffer_dir, local_dir, copied):
                         # print(f"filesize {os.path.getsize(src)}")
                         if os.path.getsize(src) > 0 :
                             shutil.move(src, dst)
-                            print()
                             while True:
                                 time.sleep(0.1)
                                 if os.path.getsize(dst) > 0:
@@ -78,7 +77,7 @@ def sync_buffer_to_local(buffer_dir, local_dir, copied):
                             copied.add(f)
                             new_files.append(f)
                         else:
-                            print(f'{f} took to long...')
+                            print(f'{f} took to long and was ignored')
                             os.remove(buffer_dir)
                             # time.sleep(0.3)
                         break
@@ -651,7 +650,10 @@ def write_KML(config_filename):
                 )
 
 
-                print(f'{specie}: {value}')
+                try:
+                    print(f'{specie}: {value}')
+                except KeyError:
+                    pass
 
                 s["point_counter"] += 1
 

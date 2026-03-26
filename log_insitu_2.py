@@ -240,7 +240,8 @@ def read_device(cfg, queue, event, date):
             #    f.write(flightstr)
 
             # buffer
-            with open(f"{cfg['Paths']['maindir']}/Buffer/{measnum:05d}_{timestamp}_{device_type}.dat", 'w') as f:
+            # with open(f"{cfg['Paths']['maindir']}/Buffer/{measnum:05d}_{timestamp}_{device_type}.dat", 'w') as f:
+            with open(f"{cfg['Paths']['maindir']}/Buffer/{timestamp}_{device_type}.dat", 'w') as f:
                 f.write(outstr)
 
             #with open(f"{cfg['Paths']['maindir']}/Buffer_flighttrack/{measnum:05d}_{timestamp}_{device_type}.dat", 'w') as f:
