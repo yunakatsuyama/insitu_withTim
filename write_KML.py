@@ -102,10 +102,14 @@ def generate_color_scale(nbins):
 
     for i in range(nbins):
         ratio = i / (nbins - 1)
-
-        r = int(255 * ratio)
-        g = 0
-        b = int(255 * (1 - ratio))
+        if ratio < 0.5:
+            r = int(255 * ratio * 2)
+            g = int(255 * (1 - ratio * 2))
+            b = 0
+        else:
+            r = 0
+            g = int(255 * ratio * 2)
+            b = int(255 * (1 - ratio * 2))
 
         # KML format: AABBGGRR
         color = f"ff{b:02x}{g:02x}{r:02x}"
