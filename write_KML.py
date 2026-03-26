@@ -452,30 +452,6 @@ def write_KML(config_filename):
     kml_savefolder = config['Paths']['kmlpath']
     flighttrack_buffer = config['Paths']['flighttrackfolder']
     reprocess = eval(config['Paths']['reprocess'])
-    empty_reprocess_folder = eval(config['Paths']['empty_reprocess_folder'])
-    emtpy_remote_folder = eval(config['Paths']['emtpy_remote_folder'])
-
-    if empty_reprocess_folder:
-        if os.path.exists(reprocessfolder):
-            print(f'Deleting all files in {reprocessfolder}!')
-            shutil.rmtree(reprocessfolder)
-        else:
-            pass
-    elif not empty_reprocess_folder:
-        pass
-    else:
-        raise ValueError(f'empty_reprocess_folder is either "True" or "False", currently {empty_reprocess_folder}')
-
-    if emtpy_remote_folder:
-        if os.path.exists(emtpy_remote_folder):
-            print(f'Deleting all files in {emtpy_remote_folder}!')
-            shutil.rmtree(emtpy_remote_folder)
-        else:
-            pass
-    elif not emtpy_remote_folder:
-        pass
-    else:
-        raise ValueError(f'emtpy_remote_folder is either "True" or "False", currently {emtpy_remote_folder}')
 
     if reprocess:
         print('Clearing old KML files and reprocessing new KML files...')
@@ -685,7 +661,8 @@ def write_KML(config_filename):
                 name="Current Aircraft Position",
                 filename=current_position_kml
             )    
-            
+
+            """
             # flighttrack
             # add point
             add_track_point(
@@ -715,7 +692,7 @@ def write_KML(config_filename):
                     active_index=flight_state["file_index"] - 1,
                     output_file=f"{kml_savefolder}/current_flighttrack.kml"
                 )
-                
+                """
                 
 if __name__ == '__main__':
     while True :
