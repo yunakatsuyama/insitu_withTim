@@ -32,11 +32,6 @@ for f in sorted(os.listdir(maindir + '/' + log_path + '/LocalBuffer')):
     dst1 = os.path.join(bufferfolder, f)
     dst2 = os.path.join(flighttrack_buffer, f)
 
-    print(src1)
-    print(src2)
-    print(dst1)
-    print(dst2)
-
     shutil.copy2(src1, dst1)
     shutil.copy2(src2, dst2)
     time.sleep(time_between_datapoints)

@@ -67,7 +67,7 @@ def sync_buffer_to_local(buffer_dir, local_dir, copied):
                 # shutil.move(src, dst)
                 for _ in range(5):
                     try:
-                        print(f"filesiye {os.path.getsize(src)}")
+                        # print(f"filesize {os.path.getsize(src)}")
                         if os.path.getsize(src) > 0 :
                             shutil.move(src, dst)
                             while True:
@@ -77,12 +77,12 @@ def sync_buffer_to_local(buffer_dir, local_dir, copied):
                             copied.add(f)
                             new_files.append(f)
                         else:
-                            print("remove")
+                            print(f'{f} took to long...')
                             os.remove(buffer_dir)
-
+                            # time.sleep(0.3)
                         break
                     except PermissionError:
-                        print(f'{f} move had a permission error, file still busy.')
+                        # print(f'{f} move had a permission error, file still busy.')
                         time.sleep(0.1)
 
 
@@ -266,7 +266,7 @@ def add_point(lat, lon, name, value, alt, vmin, vmax, nbins, filename="merge2.km
   <name>{name}</name>
   <styleUrl>#bin_{style_id}</styleUrl>
   <ExtendedData><Data name="concentration">
-    <value>{value}</value>
+    <value>{value, alt}</value>
   </Data>
   </ExtendedData>
   <Point>
@@ -612,6 +612,9 @@ def write_KML(config_filename):
                     nbins,
                     s["kmlfile"]
                 )
+
+
+                print(f'{specie}: {value}')
 
                 s["point_counter"] += 1
 
