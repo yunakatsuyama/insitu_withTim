@@ -197,18 +197,18 @@ def read_device(cfg, queue, event, date):
 
             if external_gps:
                 outstr_list = ['  '.join(data), '  '.join(delayed_gps[:3]), str(measnum), '\n']
-                flightstr = '  '.join([
-            latest_gps[3], # time
-            latest_gps[0], # lat
-            latest_gps[1], # lon
-            latest_gps[2], # alt
-            str(measnum),
-            '\n'
-            ])
+            #    flightstr = '  '.join([
+            #latest_gps[3], # time
+            #latest_gps[0], # lat
+            #latest_gps[1], # lon
+            #latest_gps[2], # alt
+            #str(measnum),
+            #'\n'
+            #])
             elif not external_gps:
                 dummy_gps = ['00:00:00.000','+000.00000', '+0000.00000', '00000']
                 outstr_list = ['  '.join(data), *dummy_gps[1:3], str(measnum), '\n']
-                flightstr = '  '.join([*dummy_gps, '\n'])
+                # flightstr = '  '.join([*dummy_gps, '\n'])
             else:
                 raise ValueError(f'external_gps is either "True" or "False", currently {external_gps}')
 
@@ -217,7 +217,7 @@ def read_device(cfg, queue, event, date):
             
             time.sleep(1)
             print(f'outstr {outstr}')
-            print(f'flightstr {flightstr}')
+            # print(f'flightstr {flightstr}')
             # ---------------------
             # WRITE FILES
             # ---------------------
@@ -228,27 +228,27 @@ def read_device(cfg, queue, event, date):
                 f"{timestamp}_{device_type}.dat"
             )
 
-            flightlog_path = (
-                f"{cfg['Paths']['maindir']}/Logfiles_{date}/"
-                f"{timestamp}_{device_type}_FLIGHT.dat"
-            )
+            #flightlog_path = (
+            #    f"{cfg['Paths']['maindir']}/Logfiles_{date}/"
+            #    f"{timestamp}_{device_type}_FLIGHT.dat"
+            #)
 
             with open(logfile_path, 'a') as f:
                 f.write(outstr)
 
-            with open(flightlog_path, 'a') as f:
-                f.write(flightstr)
+            #with open(flightlog_path, 'a') as f:
+            #    f.write(flightstr)
 
             # buffer
             with open(f"{cfg['Paths']['maindir']}/Buffer/{measnum:05d}_{timestamp}_{device_type}.dat", 'w') as f:
                 f.write(outstr)
 
-            with open(f"{cfg['Paths']['maindir']}/Buffer_flighttrack/{measnum:05d}_{timestamp}_{device_type}.dat", 'w') as f:
-                f.write(flightstr)
+            #with open(f"{cfg['Paths']['maindir']}/Buffer_flighttrack/{measnum:05d}_{timestamp}_{device_type}.dat", 'w') as f:
+            #    f.write(flightstr)
 
             # console
             sys.stdout.write(outstr)
-            sys.stdout.write(flightstr)
+            # sys.stdout.write(flightstr)
             sys.stdout.flush()
             
             
@@ -282,7 +282,7 @@ def runlogging():
         print('Folder exists already')
         
     os.makedirs(cfg['Paths']['maindir'] + '/Buffer', exist_ok=True)
-    os.makedirs(cfg['Paths']['maindir'] + '/Buffer_flighttrack', exist_ok=True)
+    # os.makedirs(cfg['Paths']['maindir'] + '/Buffer_flighttrack', exist_ok=True)
     
     gpsthread = threading.Thread(target=readgps, name='GPSthread',
                                  args=[cfg, coordqueue, stopevent])

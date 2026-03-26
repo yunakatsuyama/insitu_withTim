@@ -70,6 +70,7 @@ def sync_buffer_to_local(buffer_dir, local_dir, copied):
                         # print(f"filesize {os.path.getsize(src)}")
                         if os.path.getsize(src) > 0 :
                             shutil.move(src, dst)
+                            print()
                             while True:
                                 time.sleep(0.1)
                                 if os.path.getsize(dst) > 0:
@@ -353,7 +354,15 @@ def update_current_position(config, lat, lon, alt, name, filename):
     with open(tmp, "w", encoding="utf-8") as f:
         f.write(content)
 
-    os.replace(tmp, filename)
+    # os.replace(tmp, filename)
+    for _ in range(5):  # tries 5 times to write the file, incase the program is still writing the last file
+        try:
+            os.replace(tmp, filename)
+            break
+        except PermissionError:
+            time.sleep(0.1)
+    else:
+        print(f"WARNING: Could not write {filename}")
         
 def write_current_pointer(all_files, active_index, output_file):
     """
@@ -400,17 +409,37 @@ def write_current_pointer(all_files, active_index, output_file):
     with open(tmp, "w", encoding="utf-8") as f:
         f.write(content)
 
-    os.replace(tmp, output_file)
+    # os.replace(tmp, output_file)
+    for _ in range(5):  # tries 5 times to write the file, incase the program is still writing the last file
+        try:
+            os.replace(tmp, output_file)
+            break
+        except PermissionError:
+            time.sleep(0.1)
+    else:
+        print(f"WARNING: Could not write {output_file}")
 
-def extract_coordinates(cols, config, ):
+
+def extract_coordinates(cols, config, reverse=False):
 
     device = config['Default']['device']
 
     lat_idx = int(config[device]['lat'])
     lon_idx = int(config[device]['lon'])
     alt_idx = int(config[device]['alt'])
-    
-    # print(len(cols))
+
+    if reverse:
+        # To compensate if amount of data given from device varies by shifting given columns relative to end of cols.
+        # Will only work for external gps because of the fixed relativ idx to the end of cols
+        len_cols = len(cols)
+        max_idx = max(alt_idx, lat_idx, lon_idx)
+        offset_idx = len_cols - max_idx - 2
+        lat_idx += offset_idx
+        lon_idx += offset_idx
+        alt_idx += offset_idx
+    else:
+        pass
+
     lat = float(cols[lat_idx])
     lon = float(cols[lon_idx])
     alt = float(cols[alt_idx])
@@ -450,7 +479,7 @@ def write_KML(config_filename):
     reprocessfolder = config['Paths']['reprocessfolder']
     bufferfolder = config['Paths']['remotefolder']
     kml_savefolder = config['Paths']['kmlpath']
-    flighttrack_buffer = config['Paths']['flighttrackfolder']
+    # flighttrack_buffer = config['Paths']['flighttrackfolder']
     reprocess = eval(config['Paths']['reprocess'])
 
     if reprocess:
@@ -531,21 +560,21 @@ def write_KML(config_filename):
     # ----------------------------
     # Initialize flight track
     # ----------------------------
-    flight_state = {
-    "file_index": 1,
-    "point_counter": 0,
-    "kmlfile": f"{kml_savefolder}/flighttrack_1.kml",
-    "all_files": [f"{kml_savefolder}/flighttrack_1.kml"]
-    }
-    
-    init_track_kml(flight_state["kmlfile"])
-
-    write_current_pointer(
-        flight_state["all_files"],
-        active_index=0,
-        output_file=f"{kml_savefolder}/current_flighttrack.kml"
-    )
-    
+    #flight_state = {
+    #"file_index": 1,
+    #"point_counter": 0,
+    #"kmlfile": f"{kml_savefolder}/flighttrack_1.kml",
+    #"all_files": [f"{kml_savefolder}/flighttrack_1.kml"]
+    #}
+    #
+    #init_track_kml(flight_state["kmlfile"])
+    #
+    #write_current_pointer(
+    #    flight_state["all_files"],
+    #    active_index=0,
+    #    output_file=f"{kml_savefolder}/current_flighttrack.kml"
+    #)
+    #
     # ----------------------------------
     # Initialize current flight position
     # -----------------------------------
@@ -562,26 +591,25 @@ def write_KML(config_filename):
     
     # copied_files = set(os.listdir(bufferfolder))
     copied_files = set()
-    #copied_track_files = set(os.listdir(flighttrack_buffer))
-    copied_track_files = set()
+    # copied_track_files = set(os.listdir(flighttrack_buffer))
+    # copied_track_files = set()
 
     
     while True:
-
         # Copy only new buffer files
         new_files = sync_buffer_to_local(
             buffer_dir=bufferfolder,
             local_dir=reprocessfolder,
             copied=copied_files
         )
-        new_track_files = sync_buffer_to_local(
-            buffer_dir=flighttrack_buffer,
-            local_dir=reprocessfolder + "_track",
-            copied=copied_track_files
-        )
+        #new_track_files = sync_buffer_to_local(
+        #    buffer_dir=flighttrack_buffer,
+        #    local_dir=reprocessfolder + "_track",
+        #    copied=copied_track_files
+        #)
         
         os.makedirs(reprocessfolder , exist_ok=True)
-        os.makedirs(reprocessfolder + "_track", exist_ok=True)
+        #os.makedirs(reprocessfolder + "_track", exist_ok=True)
         
         for fname in new_files:
 
@@ -591,8 +619,17 @@ def write_KML(config_filename):
             line = line.replace(",", "")
             cols = line.split()
 
-            lat, lon, alt = extract_coordinates(cols, config)
-            values = extract_species_values(cols, config)
+            try:
+                lat, lon, alt = extract_coordinates(cols, config)
+                values = extract_species_values(cols, config)
+            except (IndexError, ValueError):
+                try:
+                    lat, lon, alt = extract_coordinates(cols, config, reverse=True)
+                    values = extract_species_values(cols, config)
+                    print('Different amount of data given from Device than expected, trying to adjust...!')
+                except (IndexError, ValueError):
+                    print('GPS Index Problem, skipping file!')
+                    continue  # skips the file
             
     
             # Update all species
@@ -637,8 +674,20 @@ def write_KML(config_filename):
                         output_file=f"{kml_savefolder}/current_{specie}.kml"
                     )
 
+            # current flight position
+            # KML file update
+            update_current_position(
+                config,
+                lat,
+                lon,
+                alt,
+                name="Current Aircraft Position",
+                filename=current_position_kml
+            )
+
             print(f"Processed {fname}")
 
+        """
         # For flightrack  and current flight position 
         for fname in new_track_files:
 
@@ -665,7 +714,7 @@ def write_KML(config_filename):
                 filename=current_position_kml
             )    
 
-            """
+            
             # flighttrack
             # add point
             add_track_point(
@@ -698,5 +747,4 @@ def write_KML(config_filename):
                 """
                 
 if __name__ == '__main__':
-    while True :
-        write_KML('insitu.cfg')                   
+    write_KML('insitu.cfg')
