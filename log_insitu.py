@@ -1,4 +1,14 @@
-# rewrite from log_losgatos.py
+# Created by Yuna Katsuyama and Tim Suhling
+# University of Bremen
+# yuna@uni-bremen.de
+# timsuh@uni-bremen.de
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Serial logging for Insitu measurement device
+Reads Serial ports according to .cfg file and save the data to a Buffer to be read by write_KML.py
+Based on main.py
+"""
 
 import os
 import sys
@@ -11,8 +21,6 @@ import configparser
 
 from pynmeagps import NMEAReader
 from contextlib import contextmanager
-# from aeris_device import aeris_methane_ethene_serial
-from aeris_scripts.aeris_device import aeris_methane_ethene_serial
 
 
 def getconfig(filename='insitu.cfg'):
@@ -21,7 +29,7 @@ def getconfig(filename='insitu.cfg'):
     Parameters
     ----------
     filename : :class:`str <python:str>`
-        Name of the config file. Defaults to 'losgatos.cfg'
+        Name of the config file. Defaults to 'insitu.cfg'
 
     Returns
     -------
@@ -33,6 +41,7 @@ def getconfig(filename='insitu.cfg'):
     cfg = configparser.ConfigParser()
     cfgfile = os.path.abspath('./' + filename)
     cfg.read(cfgfile)
+    
     print(cfgfile)
 
     return cfg
@@ -115,270 +124,154 @@ def readgps(cfg, queue, event):
                             parsed_msg.time.strftime('%H:%M:%S.%f')
                         ]
                         queue.append(coordarr)
+                        print(f'readgpd {coordarr}')
             except (serial.SerialException, ValueError, AttributeError):
                 continue
             
-def readaeris(cfg, queue, event, date):
-    
-    gpsdata = ['{0:+09.5f}'.format(0.0),
-            '{0:+010.5f}'.format(0.0),
-            '{0:05d}'.format(0),
-            '00:00:00.000']
-    measnum = cfg['LogParams'].getint('startnum')        
-    timelag = cfg['AERIS'].getint('timelag', fallback=3)
-    # initialize aeris device
-    device = aeris_methane_ethene_serial(
-        port_path=cfg['AERIS']['port'],
-        tube_delay=timelag   #if GPS is internal, the delay is considered inside the class   
-    )
-    gps_delay_buffer = collections.deque(maxlen=timelag)
-  
-    while not event.is_set():
+                             
+def read_device(cfg, queue, event, date):
 
-        logfile_path = (
-            cfg['Paths']['maindir']
-            + '/Logfiles_{0}/'.format(date)
-            + datetime.datetime.now().strftime(
-                '%y%m%dt%H%M%S_GPS_AERIS_logfile.dat'
-            )
-        )
-        
-        flightlog_path = (
-            cfg['Paths']['maindir']
-            + '/Logfiles_{0}/'.format(date)
-            + datetime.datetime.now().strftime(
-                '%y%m%dt%H%M%S_FLIGHTTRACK_logfile.dat'
-            )
-        )
-
-        with open(logfile_path, 'w') as file, open(flightlog_path, 'w') as flightfile:
-
-            # file.write('# GPS_TIME WINDOWS_TIME AERIS_TIME CO2 XCO2 CH4 XCH4 H2O GPS_LAT GPS_LON GPS_ALT\n')
-
-            measnum += 1       
-                     
-            while not event.is_set():
-                # format obtained from .update is 
-                # aeris data is dictionaly
-                # self.csv_data_name_lst = ["date", "p", "T", "ch4", "c2h6", "h2o", "lat","lon"]    
-                aerisdata = device.update()
-            
-                print(aerisdata)
-
-                if not aerisdata:
-                    continue
-
-                try:
-                    gpsdata = queue.pop()
-                    print(gpsdata)
-                except IndexError:
-                    pass  # keep last gpsdata   
-                
-                # --------------------------------------------------
-                # TIMELAG
-                # --------------------------------------------------
-
-                gps_delay_buffer.appendleft(gpsdata)
-
-                if len(gps_delay_buffer) < timelag:
-                    continue
-
-                delayed_gps = gps_delay_buffer.pop()
-                
-                # -----------------------------------------------------------------------------------
-                # This is for logfiles containing external gps and aeris lon lat
-                # If the gps data is from external mous, consider the timelag
-                # ----------------------------------------------------------------------------------
-                if cfg['AERIS']['GPSTyp'] == 'ext':
-                    outstrlog = '  '.join([(delayed_gps[3])[:10],  # gps time
-                                                    datetime.datetime.now().strftime('%H:%M:%S.%f')[:10],  # pc time
-                                                    f"{aerisdata['p']:.3f}",
-                                                    f"{aerisdata['T']:.3f}",
-                                                    f"{aerisdata['ch4']:.6f}",
-                                                    f"{aerisdata['c2h6']:.6f}",
-                                                    f"{aerisdata['h2o']:.6f}",  # concentrations
-                                                    ' '.join(delayed_gps[:3]),  # lat lon alt
-                                                    str(measnum),  # measurement number
-                                                    '\n'])
-                elif cfg['AERIS']['GPSTyp'] == 'int':
-                    outstrlog = '  '.join([(aerisdata["date"].strftime('%H:%M:%S.%f')[:10]),  # aeris time
-                                                    datetime.datetime.now().strftime('%H:%M:%S.%f')[:10],  # pc time
-                                                    f"{aerisdata['p']:.3f}",
-                                                    f"{aerisdata['T']:.3f}",
-                                                    f"{aerisdata['ch4']:.6f}",
-                                                    f"{aerisdata['c2h6']:.6f}",
-                                                    f"{aerisdata['h2o']:.6f}",  # concentrations
-                                                    f"{aerisdata['lat']:.6f}",  # lat lon alt
-                                                    f"{aerisdata['lon']:.6f}",
-                                                    f"{aerisdata['alt']:.6f}",  # currently not implemented in aeris_device
-                                                    str(measnum),  # measurement number
-                                                    '\n'])
-                else:
-                    print(f'cfg device gpstyp should be ext or int')
-                     
-                file.write(outstrlog)
-                # --------------------------------------------------
-                # LATEST GPS -> flight track
-                # --------------------------------------------------
-
-                latest_gps = gpsdata
-
-                flightstr = '  '.join([
-                    latest_gps[3],
-                    latest_gps[0],
-                    latest_gps[1],
-                    latest_gps[2],
-                    str(measnum),
-                    '\n'
-                ])
-
-                flightfile.write(flightstr)
-                flightfile.flush()
-                
-                # --------------------------------------------------------------
-                # From here, buffer (currenyly the same format as the logfolder)
-                # --------------------------------------------------------------
-                # Concentrations
-                outstrbuf = outstrlog
-                with open(cfg['Paths']['maindir'] + '/Buffer/' + '{0:05d}'.format(measnum) +
-                                        datetime.datetime.now().strftime(
-                                        '_%y%m%dt%H%M%S_GPS_AERIS_buffile.dat'
-                                        ), 'w') as buffile:
-                    buffile.write(outstrbuf)
-                sys.stdout.write(outstrbuf)
-                sys.stdout.flush()
-                
-                # flight track
-                flightstrbuf = flightstr
-                with open(cfg['Paths']['maindir'] + '/Buffer_flighttrack/' + '{0:05d}'.format(measnum) +
-                                        datetime.datetime.now().strftime(
-                                        '_%y%m%dt%H%M%S_extGPS_FLIGHTTRACK.dat'
-                                        ), 'w') as buffile_flighttrack:
-                    buffile_flighttrack.write(flightstrbuf)
-                sys.stdout.write(flightstrbuf)
-                sys.stdout.flush()
-                break
-                
-            if event.is_set():
-                break
-
-def readlosgatos(cfg, queue, event, date):
-    """Reads LosGatos Data from serial port and combines it with GPS data
-
-    Parameters
-    ----------
-    cfg : :class:`dict <python:dict>`
-        Configuration dictionary. Must contain the following sections and
-        fields:
-
-            - GGA: all configuration parameters for serial connection to GGA
-            - Paths: `maindir` path to main storage folder
-            - LogParams: `startnum` first measurement number, `loglen` number
-                of entries per logfile
-
-    queue : :class:`collections.deque <python:collections.deque>`
-        queue from which the gps coordinates are read.
-    event : :class:`threading.event <python:threading.event>`
-        Event to stop the execution of this routine.
-
-    """
-
-    deviceoutput = {'UGGABerlin': 'CH4 CH4_se H2O H2O_se CO2 CO2_se GasP_torr' +
-                    'GasP_torr_se GasT_C GasT_C_se AmbT_C AmbT_se RD0_us' +
-                    'RD0_us_se RD1_us RD1_us_se Fit_Flag',
-                    'UGGAHella': 'CH4 CH4_se H2O H2O_se CO2 CO2_se CO CO_se' +
-                    'CH4d CH4d_se CO2d CO2d_se COd COd_se GasP_torr' +
-                    'GasP_torr_se GasT_C GasT_C_se AmbT_C AmbT_se RD0_us' +
-                    'RD0_us_se RD1_us RD1_us_se LTC0_v LTC0_v_se LTC1_v ' +
-                    'LTC1_v_se Fit_Flag MIU_VALVE MIU_DESC',
-					'UGGAEOS': 'CH4 CH4_sd H2O H2O_sd CO2 CO2_sd CO CO_sd CH4d CH4d_sd CO2d CO2d_sd COd COd_sd GasP_torr ' + 
-					'GasP_torr_sd GasT_C GasT_C_sd AmbT_C AmbT_C_sd RD0_us RD0_us_sd RD1_us RD1_us_sd ' + 
-					'Temp_Status Temp_Status_sd Analyzer_Status_mA,Analyzer_Status_mA_sd,       Fit_Flag,      MIU_VALVE,       MIU_DESC, GPS Time Stamp (hr), Latitude (deg), Longitude (deg), Altitude (m), Geodial Separation (m), GPS Fit, Nr of Satellites, horizontal dillution, units altitude, units separation'}
-    # for when GPS cannot have any data soon after thread starts
-    # meands dummy GPS filled with 0.  
-    gpsdata = ['{0:+09.5f}'.format(0.0),
-               '{0:+010.5f}'.format(0.0),
-               '{0:05d}'.format(0),
-               '00:00:00.000']
+    device_type = cfg['Default']['device']
     measnum = cfg['LogParams'].getint('startnum')
 
-    # open loagatos port and the serial object is in ggacom
-    with opencom(cfg['GGA']['port'], cfg['GGA'].getint('baudrate'),
-                 cfg['GGA'].getint('timeout'),
-                 **{'bytesize': cfg['GGA'].getint('bytesize'),
-                  'parity': cfg['GGA']['parity'],
-                  'stopbits': cfg['GGA'].getinst('stopbits')}
-                 ) as ggacom:
-        ggacom.reset_input_buffer()
+    gpsdata = ['+000.00000', '+0000.00000', '00000', '00:00:00.000']
+    
 
-        # until finish, read and wrtie data
-        while not event.is_set():
-            with open(cfg['Paths']['maindir'] + '/Logfiles_{0}/'.format(date) +
-                      datetime.datetime.now().strftime(
-                      '%y%m%dt%H%M%S_GPS_Picarro_logfile.dat'), 'w'
-                      ) as file:
-                file.write('# GPS_TIME WINDOWS_TIME LOSGATOS_TIME' + deviceoutput[cfg['GGA']['devicename']] +' GPS_LAT GPS_LON GPS_ALT MEAS_NUM\n')
+    # -------------------------
+    # DEVICE SETUP
+    # -------------------------
+
+
+    timelag = cfg[device_type].getint('timelag', fallback=3)
+    port_path=cfg[device_type]['port']
+    baudrate = cfg[device_type].getint('baudrate')
+    serial_timeout= cfg[device_type].getint('timeout')
+    bytesize=cfg[device_type].getint('bytesize')
+    parity=cfg[device_type]['parity']
+    stopbits=cfg[device_type].getint('stopbits')
+    separator = cfg[device_type]['separator']
+    external_gps = eval(cfg[device_type]['external_gps'])
+    
+    gps_buffer = collections.deque(maxlen=timelag)
+
+    with opencom(
+        port=port_path,
+        baudrate=baudrate,
+        timeout=serial_timeout,
+        bytesize = bytesize,
+        parity = parity,
+        stopbits = stopbits 
+    ) as devicecom:
+        
+        devicecom.reset_input_buffer()
+
+    # -------------------------
+    # MAIN LOOP
+    # -------------------------
+        while not event.is_set():    
+            data = devicecom.readline().decode('utf-8', errors='ignore').strip()
+            
+            if separator is None:
+                data = data.split()        # split on whitespace
+            else:
+                data = data.split(separator)
                 
-                #while True :  # I need to think about the condition here, it is for entire measurement 
-                measnum += 1
-                while True:
-                    if ggacom.in_waiting > 1:
-                        ggadata = ggacom.readline().decode()
-                        if len(ggadata) >= 298:
-                            try:
-                                gpsdata = queue.pop()   # get the lastest GPS data (in queue, all data is stored (updated))
-                            except IndexError:
-                                pass
-                            # this string is one line that has both GPS and losgatos, also time
-                            outstrlog = ', '.join([(gpsdata[3])[:10],  # gps time
-                                                datetime.datetime.now().strftime('%H:%M:%S.%f')[:10],  # pc time
-                                                ggadata[:-2],  # concentrations
-                                                ', '.join(gpsdata[:3]),  # lat lon alt
-                                                str(measnum),  # measurement number
-                                                '\n'])
-                            file.write(outstrlog)
-                            outbuf = [col.strip() for col in outstrlog.split(sep=',')]
-                            # For write in Buffer file,  change the order of info    
-                            if cfg['GGA']['devicename'] in ['UGGAHella']:
-                                outstrbuf = '  '.join(['  '.join(outbuf[0:3]), outbuf[7], outbuf[13],
-                                                        outbuf[3], outbuf[11], outbuf[5],
-                                                        outbuf[9], outbuf[15],
-                                                        '  '.join(gpsdata[:3]),
-                                                        str(measnum), '\n'])
-                            else:
-                                outstrbuf = '  '.join(['  '.join(outbuf[0:3]), outbuf[7], '0.000000e+00',
-                                                        outbuf[3], '0.000000e+00', outbuf[5],
-                                                        '  '.join(gpsdata[:3]),
-                                                        str(measnum), '\n'])
-                            with open(cfg['Paths']['maindir'] + '/Buffer/' + '{0:05d}'.format(measnum) +
-                                        datetime.datetime.now().strftime(
-                                        '_%y%m%dt%H%M%S_GPS_LosGatos_buffile.dat'
-                                        ), 'w') as buffile:
-                                buffile.write(outstrbuf)
-                            sys.stdout.write(outstrbuf)
-                            sys.stdout.flush()
-                            break
-                    if event.is_set():
-                        break
+                
+            # ---------------------
+            # GPS handling
+            # ---------------------
+            if queue:
+                gpsdata = queue[-1]
+            # print(f'gpsdata {gpsdata}')
+            gps_buffer.appendleft(gpsdata)
 
-                if event.is_set():
-                    break
+            if len(gps_buffer) < timelag:
+                continue
+
+            delayed_gps = gps_buffer.pop()
+            # print(f'gps_buffer {gps_buffer}')
+            # print(f'delayed_gps {delayed_gps}')
+            latest_gps = gpsdata
+
+            measnum += 1
+
+            # ---------------------
+            # FORMAT OUTPUT
+            # ---------------------
+            # outstr, flightstr = formatter(
+            #     cfg, data, delayed_gps, latest_gps, measnum
+            # )
+
+            if external_gps:
+                outstr_list = ['  '.join(data), '  '.join(delayed_gps[:3]), str(measnum), '\n']
+            #    flightstr = '  '.join([
+            #latest_gps[3], # time
+            #latest_gps[0], # lat
+            #latest_gps[1], # lon
+            #latest_gps[2], # alt
+            #str(measnum),
+            #'\n'
+            #])
+            elif not external_gps:
+                dummy_gps = ['00:00:00.000','+000.00000', '+0000.00000', '00000']
+                outstr_list = ['  '.join(data), *dummy_gps[1:3], str(measnum), '\n']
+                # flightstr = '  '.join([*dummy_gps, '\n'])
+            else:
+                raise ValueError(f'external_gps is either "True" or "False", currently {external_gps}')
+
+            outstr = '  '.join(outstr_list)
+            
+            
+            time.sleep(1)
+            print(f'outstr {outstr}')
+            # print(f'flightstr {flightstr}')
+            # ---------------------
+            # WRITE FILES
+            # ---------------------
+            timestamp = datetime.datetime.now().strftime('%y%m%dt%H%M%S')
+
+            logfile_path = (
+                f"{cfg['Paths']['maindir']}/Logfiles_{date}/"
+                f"{timestamp}_{device_type}.dat"
+            )
+
+            #flightlog_path = (
+            #    f"{cfg['Paths']['maindir']}/Logfiles_{date}/"
+            #    f"{timestamp}_{device_type}_FLIGHT.dat"
+            #)
+
+            with open(logfile_path, 'a') as f:
+                f.write(outstr)
+
+            #with open(flightlog_path, 'a') as f:
+            #    f.write(flightstr)
+
+            # buffer
+            # with open(f"{cfg['Paths']['maindir']}/Buffer/{measnum:05d}_{timestamp}_{device_type}.dat", 'w') as f:
+            with open(f"{cfg['Paths']['maindir']}/Buffer/{timestamp}_{device_type}.dat", 'w') as f:
+                f.write(outstr)
+
+            #with open(f"{cfg['Paths']['maindir']}/Buffer_flighttrack/{measnum:05d}_{timestamp}_{device_type}.dat", 'w') as f:
+            #    f.write(flightstr)
+
+            # console
+            sys.stdout.write(outstr)
+            # sys.stdout.write(flightstr)
+            sys.stdout.flush()
+            
+            
+        
 def runlogging():
-    """Start the logging of the LosGatos GGA
-
-    This has to be run in a set up runtime folder with a Buffer and a Logfiles
-    directory. This directory must also contain a :obj:`losgatos.cfg` file.
-
+    """
+    Start the logging of the Device.
+    This has to be run in a folder containing the .cfg file.
+    Function will generate folder structure for saving based on [PATHS] in the .cfg file.
     """
 
     coordqueue = collections.deque(maxlen=1)
     stopevent = threading.Event()
 
     cfg = getconfig()
-    # if cfg['Default']['device'] == 'aeris':
-    #     from aeris_scripts.aeris_device import aeris_methane_ethene_serial
-#    cfg['Paths']['maindir'] = (cfg['Paths']['maindir'] + '/'
-#                               + datetime.datetime.now().strftime('%y%m%d_LosGatos'))
 
     date = datetime.datetime.now().strftime('%y%m%d')
     try:
@@ -390,25 +283,12 @@ def runlogging():
         os.mkdir(cfg['Paths']['maindir'] + '/Logfiles_{0}'.format(date))
     except FileExistsError:
         print('Folder exists already')
+        
+    os.makedirs(cfg['Paths']['maindir'] + '/Buffer', exist_ok=True)
+    
+    gpsthread = threading.Thread(target=readgps, name='GPSthread', args=[cfg, coordqueue, stopevent])
+    devicethread = threading.Thread(target=read_device, args=[cfg, coordqueue, stopevent, date])
 
-    gpsthread = threading.Thread(target=readgps, name='GPSthread',
-                                 args=[cfg, coordqueue, stopevent])
-    device_type = cfg['Default']['device']
-
-    if device_type == 'aeris':
-        devicethread = threading.Thread(
-            target=readaeris,
-            args=[cfg, coordqueue, stopevent, date]
-        )
-    elif device_type == 'losgatos':
-        devicethread = threading.Thread(
-            target=readlosgatos,
-            args=[cfg, coordqueue, stopevent, date]
-        )
-    else:
-        raise ValueError("Unknown device")
-    # ggathread = threading.Thread(target=readaeris, name='Devicethread',
-    #                              args=[cfg, coordqueue, stopevent, date])
     gpsthread.start()
     devicethread.start()
 
@@ -419,11 +299,11 @@ def runlogging():
         stopevent.set()
         gpsthread.join(5)
         devicethread.join(5)
-        print('threads terminated (gps, gga):')
+        print('threads terminated (gps, device):')
         print(not gpsthread.is_alive(), not devicethread.is_alive())
     finally:
         stopevent.set()
-        print('threads terminated (gps, gga):')
+        print('threads terminated (gps, device):')
         print(not gpsthread.is_alive(), not devicethread.is_alive())
 
 

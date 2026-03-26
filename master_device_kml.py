@@ -1,7 +1,7 @@
 
 import threading
 
-from log_insitu_2 import runlogging
+from log_insitu import runlogging
 from write_KML import write_KML
 
 cfg = 'insitu.cfg'

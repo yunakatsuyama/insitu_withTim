@@ -1,15 +1,24 @@
+# Created by Yuna Katsuyama and Tim Suhling
+# University of Bremen
+# yuna@uni-bremen.de
+# timsuh@uni-bremen.de
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Creates KML files from data read by log_insitu
+"""
 # Icon url https://kml4earth.appspot.com/icons.html
 
-import pandas as pd
-import numpy as np
+#import pandas as pd
+#import numpy as np
 import time
 import os
 import shutil
-from datetime import datetime
+#from datetime import datetime
 import configparser
 
+
 def read_config(filename):
-#def read_config(filename = ):
     """Reads config file and returns config dictionary.
 
     Parameters
@@ -38,16 +47,24 @@ def read_config(filename):
     config.read(file)
     print("FILES READ:", config.read(file))   
     print("SECTIONS FOUND:", config.sections())    
-        #files_read = config.read(file)
-        #print("Config file read:", files_read)
-        #print("Sections found:", config.sections())
-        
 
     return config
 
-    
-    
+
 def sync_buffer_to_local(buffer_dir, local_dir, copied):
+    """
+    Moves files from buffer_dir to local_dir.
+    Adds all moved files to the set copied
+    Parameters
+    ----------
+    buffer_dir
+    local_dir
+    copied
+
+    Returns copied set with moved files
+    -------
+
+    """
     os.makedirs(local_dir, exist_ok=True)
 
     new_files = []
@@ -63,11 +80,8 @@ def sync_buffer_to_local(buffer_dir, local_dir, copied):
             dst = os.path.join(local_dir, f)
 
             try:
-                #shutil.copy2(src, dst)
-                # shutil.move(src, dst)
                 for _ in range(5):
                     try:
-                        # print(f"filesize {os.path.getsize(src)}")
                         if os.path.getsize(src) > 0 :
                             shutil.move(src, dst)
                             while True:
@@ -79,18 +93,13 @@ def sync_buffer_to_local(buffer_dir, local_dir, copied):
                         else:
                             print(f'{f} took to long and was ignored')
                             os.remove(buffer_dir)
-                            # time.sleep(0.3)
                         break
                     except PermissionError:
                         # print(f'{f} move had a permission error, file still busy.')
                         time.sleep(0.1)
 
-
             except FileNotFoundError:
                 continue
-
-
-
     return new_files
 
 
@@ -103,6 +112,7 @@ def local_data_reader(local_dir="LocalBuffer"):
             lines = f.readlines()
             if len(lines) > 1:
                 yield lines[1].strip()   # skip header
+    return None
 
 
 # == KML definition ==========
@@ -125,7 +135,6 @@ def generate_color_scale(nbins):
         # KML format: AABBGGRR
         color = f"ff{b:02x}{g:02x}{r:02x}"
         colors.append(color)
-
     return colors
 
 def generate_styles(nbins, config):
@@ -152,9 +161,8 @@ def generate_styles(nbins, config):
 """
     return styles
 
-def init_kml(filename, nbins, config):
-    
 
+def init_kml(filename, nbins, config):
     tmp = filename + ".tmp"
     styles = generate_styles(nbins, config)
     content = f"""<?xml version="1.0" encoding="UTF-8"?>
@@ -172,10 +180,10 @@ def init_kml(filename, nbins, config):
         f.write(content)
 
     os.replace(tmp, filename)
+    return None
 
     
 def init_track_kml(filename):
-
     tmp = filename + ".tmp"
     content = """<?xml version="1.0" encoding="UTF-8"?>
 <kml xmlns="http://www.opengis.net/kml/2.2">
@@ -204,10 +212,10 @@ def init_track_kml(filename):
 </Document>
 </kml>
 """
-
     with open(tmp, "w", encoding="utf-8") as f:
         f.write(content)
     os.replace(tmp, filename)
+    return None
     
     
 def init_current_kml(config, filename):
@@ -235,6 +243,7 @@ def init_current_kml(config, filename):
 """
     with open(filename, "w", encoding="utf-8") as f:
         f.write(content)
+    return None
         
                 
 def value_to_bin(value, vmin, vmax, nbins):
@@ -245,6 +254,7 @@ def value_to_bin(value, vmin, vmax, nbins):
 
     step = (vmax - vmin) / nbins
     return int((value - vmin) / step)
+
 
 def add_point(lat, lon, name, value, alt, vmin, vmax, nbins, filename="merge2.kml"):
     """
@@ -294,7 +304,9 @@ def add_point(lat, lon, name, value, alt, vmin, vmax, nbins, filename="merge2.km
             time.sleep(0.1)
     else:
         print(f"WARNING: Could not write {filename}")
+    return None
 
+"""
 def add_track_point(lat, lon, alt, filename):
 
     tmp = filename + ".tmp"
@@ -313,6 +325,8 @@ def add_track_point(lat, lon, alt, filename):
         f.write(new_text)
 
     os.replace(tmp, filename)
+"""
+
     
 def update_current_position(config, lat, lon, alt, name, filename):
     tmp = filename + ".tmp"
@@ -362,6 +376,8 @@ def update_current_position(config, lat, lon, alt, name, filename):
             time.sleep(0.1)
     else:
         print(f"WARNING: Could not write {filename}")
+    return None
+
         
 def write_current_pointer(all_files, active_index, output_file):
     """
@@ -417,10 +433,10 @@ def write_current_pointer(all_files, active_index, output_file):
             time.sleep(0.1)
     else:
         print(f"WARNING: Could not write {output_file}")
+    return None
 
 
 def extract_coordinates(cols, config, reverse=False):
-
     device = config['Default']['device']
 
     lat_idx = int(config[device]['lat'])
@@ -442,8 +458,8 @@ def extract_coordinates(cols, config, reverse=False):
     lat = float(cols[lat_idx])
     lon = float(cols[lon_idx])
     alt = float(cols[alt_idx])
-
     return lat, lon, alt
+
 
 def extract_species_values(cols, config):
     device = config['Default']['device']
@@ -462,8 +478,8 @@ def extract_species_values(cols, config):
             values[sp] = float(cols[col_index])
         except (ValueError, IndexError):
             continue
-
     return values
+
 
 # ===============
 #  MAIN 
@@ -494,11 +510,6 @@ def write_KML(config_filename):
         pass
     else:
         raise ValueError(f'reprocess is either "True" or "False", currently {reprocess}')
-
-    # Reset LocalBuffer for this run
-    #if os.path.exists(reprocessfolder):
-    #    shutil.rmtree(reprocessfolder)
-    #os.makedirs(reprocessfolder)
 
     os.makedirs(kml_savefolder, exist_ok=True)
     # -------------------------
