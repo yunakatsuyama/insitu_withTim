@@ -13,8 +13,12 @@ Creates KML files from data read by log_insitu
 #import numpy as np
 import time
 import os
+import re
+import numpy as np
 import shutil
-#from datetime import datetime
+# from datetime import datetime
+import matplotlib.pyplot as plt
+from matplotlib.colors import ListedColormap, Normalize
 import configparser
 
 
@@ -51,7 +55,7 @@ def read_config(filename):
     return config
 
 
-def sync_buffer_to_local(buffer_dir, local_dir, copied):
+def sync_buffer_to_local(buffer_dir, local_dir, copied, skip_files=0):
     """
     Moves files from buffer_dir to local_dir.
     Adds all moved files to the set copied
@@ -69,7 +73,9 @@ def sync_buffer_to_local(buffer_dir, local_dir, copied):
 
     new_files = []
 
-    for f in sorted(os.listdir(buffer_dir)):
+    buffer_files = sorted(os.listdir(buffer_dir))
+
+    for f in buffer_files[skip_files:]:
 
         if f.endswith(".tmp"):
             continue
@@ -103,6 +109,24 @@ def sync_buffer_to_local(buffer_dir, local_dir, copied):
     return new_files
 
 
+def reprocess_file_reader(local_dir, copied, skip_files=0):
+    os.makedirs(local_dir, exist_ok=True)
+    new_files = []
+
+    old_buffer_files = sorted(os.listdir(local_dir))
+
+    if skip_files >= len(old_buffer_files):
+        print(f'WARNING: reprocess_skip_files : {skip_files} is bigger than files in '
+              f'LocalBuffer {len(old_buffer_files)}, loading most recent 100 files...')
+        skip_files = len(old_buffer_files) - 100
+
+    for f in old_buffer_files[skip_files:]:
+        copied.add(f)
+        new_files.append(f)
+    print(f'REPROCESSING FILES: {len(new_files)}')
+    return new_files
+
+
 def local_data_reader(local_dir="LocalBuffer"):
     files = sorted(os.listdir(local_dir))
 
@@ -119,26 +143,30 @@ def local_data_reader(local_dir="LocalBuffer"):
 # colors = ["ff0000ff", "ff00ffff", "ff00ff00", "ff00ff00", "ff0000ff"]
 def generate_color_scale(nbins):
     colors = []
+    r_ = []
+    g_ = []
+    b_ = []
 
     for i in range(nbins):
         ratio = i / (nbins - 1)
 
         if ratio > 0.5:
-            r = int(255 * ratio*2)
-            g = int(255 * (1 - ratio*2))
+            r = int(255 * (ratio-0.5) * 2)
+            g = int(255 * (1 - (ratio-0.5)*2))
             b = 0
         else:
             r = 0
-            g = int(255 * ratio)
-            b = int(255 * (1 - ratio))
+            g = int(255 * ratio*2)
+            b = int(255 * (1 - ratio*2))
 
-        # KML format: AABBGGRR
-        color = f"ff{b:02x}{g:02x}{r:02x}"
-        colors.append(color)
-    return colors
+        colors.append(f"ff{b:02x}{g:02x}{r:02x}")
+        r_.append(r)
+        g_.append(g)
+        b_.append(b)
+    return colors, r_, g_, b_
 
 def generate_styles(nbins, config):
-    colors = generate_color_scale(nbins)
+    colors, _, _, _ = generate_color_scale(nbins)
     iconfolder = config['Paths']['iconfolder']
     icon_path = os.path.abspath(
         os.path.join(iconfolder, "road_shield3.png")
@@ -435,6 +463,27 @@ def write_current_pointer(all_files, active_index, output_file):
         print(f"WARNING: Could not write {output_file}")
     return None
 
+def plot_colorbar(xlabel: str, vmin: float, vmax: float, nbins: int = 125):
+    _, r, g, b = generate_color_scale(nbins)
+
+    rgb_array = np.array([r, g, b]).T / 255.0
+    cmap = ListedColormap(rgb_array)
+
+    norm = Normalize(vmin=vmin, vmax=vmax)
+
+    fig, ax = plt.subplots(figsize=(6, 1))
+    fig.subplots_adjust(bottom=0.5)
+
+    cb = plt.colorbar(
+        plt.cm.ScalarMappable(norm=norm, cmap=cmap),
+        cax=ax,
+        orientation='horizontal'
+    )
+    cb.set_label(xlabel)
+
+    plt.savefig(f'colorbar_{xlabel}.png', bbox_inches='tight', dpi=300)
+    plt.close(fig)
+    return None
 
 def extract_coordinates(cols, config, reverse=False):
     device = config['Default']['device']
@@ -496,21 +545,13 @@ def write_KML(config_filename):
     kml_savefolder = config['Paths']['kmlpath']
     # flighttrack_buffer = config['Paths']['flighttrackfolder']
     reprocess = eval(config['Paths']['reprocess'])
+    reprocess_skip_files = int(config['Paths']['reprocess_skip_files'])
 
     if reprocess:
-        print('Clearing old KML files and reprocessing new KML files...')
         # Reset KML files
         if os.path.exists(kml_savefolder):
+            print('Clearing old KML files and reprocessing new KML files...')
             shutil.rmtree(kml_savefolder)
-
-        # Move LocalBuffer to Buffer
-        sync_buffer_to_local(reprocessfolder, bufferfolder, set())
-        print('Moved files from LocalBuffer to Buffer.')
-    elif not reprocess:
-        pass
-    else:
-        raise ValueError(f'reprocess is either "True" or "False", currently {reprocess}')
-
     os.makedirs(kml_savefolder, exist_ok=True)
     # -------------------------
     # Device settings
@@ -518,7 +559,7 @@ def write_KML(config_filename):
     species = config[device]['species'].split()
     nbins = config.getint(device, 'nbins')
 
-    print("Species:", species)
+    # print("Species:", species)
 
     # Read species ranges dynamically
     ranges = {}
@@ -533,6 +574,9 @@ def write_KML(config_filename):
         vmin, vmax = [float(v) for v in config[device][key].split()]
 
         ranges[specie] = (vmin, vmax)
+
+        plot_colorbar(specie, vmin, vmax, nbins)
+
 
     # -------------------------
     # Initialize per-species state
@@ -567,60 +611,39 @@ def write_KML(config_filename):
             active_index=0,
             output_file=pointer_file
         )
-    # ----------------------------
-    # Initialize flight track
-    # ----------------------------
-    #flight_state = {
-    #"file_index": 1,
-    #"point_counter": 0,
-    #"kmlfile": f"{kml_savefolder}/flighttrack_1.kml",
-    #"all_files": [f"{kml_savefolder}/flighttrack_1.kml"]
-    #}
-    #
-    #init_track_kml(flight_state["kmlfile"])
-    #
-    #write_current_pointer(
-    #    flight_state["all_files"],
-    #    active_index=0,
-    #    output_file=f"{kml_savefolder}/current_flighttrack.kml"
-    #)
-    #
+
     # ----------------------------------
     # Initialize current flight position
     # -----------------------------------
+
     current_position_kml = f"{kml_savefolder}/current_position.kml"
     init_current_kml(config, current_position_kml)   
-     
-     
-     
-    # =============================+
-    
-    # Realtime loop
-    
-    # =============================+
-    
-    # copied_files = set(os.listdir(bufferfolder))
-    copied_files = set()
-    # copied_track_files = set(os.listdir(flighttrack_buffer))
-    # copied_track_files = set()
 
-    
+    # =============================+
+    # Realtime loop
+    # =============================+
+    copied_files = set()
+
     while True:
-        # Copy only new buffer files
-        new_files = sync_buffer_to_local(
-            buffer_dir=bufferfolder,
-            local_dir=reprocessfolder,
-            copied=copied_files
-        )
-        #new_track_files = sync_buffer_to_local(
-        #    buffer_dir=flighttrack_buffer,
-        #    local_dir=reprocessfolder + "_track",
-        #    copied=copied_track_files
-        #)
-        
-        os.makedirs(reprocessfolder , exist_ok=True)
-        #os.makedirs(reprocessfolder + "_track", exist_ok=True)
-        
+
+        os.makedirs(reprocessfolder, exist_ok=True)
+        if reprocess:
+            # Mark files in LocalBuffer as new_files
+            new_files = reprocess_file_reader(reprocessfolder, copied_files, reprocess_skip_files)
+
+            # Set reprocess as False to only reprocess them once!
+            reprocess = False
+
+        elif not reprocess:
+            # Copy only new buffer files
+            new_files = sync_buffer_to_local(
+                buffer_dir=bufferfolder,
+                local_dir=reprocessfolder,
+                copied=copied_files
+            )
+        else:
+            raise ValueError(f'reprocess is either "True" or "False", currently {reprocess}')
+
         for fname in new_files:
 
             with open(os.path.join(reprocessfolder, fname), "r") as f:
@@ -629,6 +652,19 @@ def write_KML(config_filename):
             line = line.replace(",", "")
             cols = line.split()
 
+            # Test if start of cols is a time value as expected
+            TIMESTAMP_PATTERN = r"\d{2}/\d{2}/\d{4}\s+\d{2}:\d{2}:\d{2}\.\d{3}"
+            matches = re.findall(TIMESTAMP_PATTERN, line)
+            valid_data = len(matches) == 1
+            # print(cols)
+            # print(matches, len(matches), valid_data)
+            if not valid_data:
+                print(f'{fname} more or less than one data string, skipping file!')
+                continue
+            else:
+                pass
+
+            # Trying to set GPS DATA and values
             try:
                 lat, lon, alt = extract_coordinates(cols, config)
                 values = extract_species_values(cols, config)
@@ -640,12 +676,15 @@ def write_KML(config_filename):
                 except (IndexError, ValueError):
                     print('GPS Index Problem, skipping file!')
                     continue  # skips the file
-            
-    
+
             # Update all species
             for specie in species:
 
-                value = values[specie]
+                try:
+                    value = values[specie]
+                except KeyError:
+                    print(f'{fname} had index probelms, skipping file!')
+                    continue
                 s = state[specie]
 
                 add_point(
@@ -659,7 +698,6 @@ def write_KML(config_filename):
                     nbins,
                     s["kmlfile"]
                 )
-
 
                 try:
                     print(f'{specie}: {value}')
@@ -758,6 +796,8 @@ def write_KML(config_filename):
                     output_file=f"{kml_savefolder}/current_flighttrack.kml"
                 )
                 """
-                
+
+
+
 if __name__ == '__main__':
     write_KML('insitu.cfg')
