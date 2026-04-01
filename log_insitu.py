@@ -90,8 +90,10 @@ def opencom(port, baudrate, timeout, **portkwargs):
     finally:
         comport.close()
 
+
 def readgps(cfg, queue, event):
     """Get GPS coordinates from serial gps device using pynmeagps.
+    Keeps last valid GPS coordinates if fix is lost.
 
     Parameters
     ----------
@@ -102,33 +104,66 @@ def readgps(cfg, queue, event):
     event : threading.Event
         Event to stop the thread
     """
-    with opencom(cfg['GPS']['port'], cfg['GPS'].getint('baudrate'),
-                 cfg['GPS'].getint('timeout'),
-                 **{'bytesize': cfg['GPS'].getint('bytesize'),
-                    'parity': cfg['GPS']['parity'],
-                    'stopbits': cfg['GPS'].getint('stopbits')}
-                 ) as gpscom:
+    last_valid_gps = ['+000.00000', '+0000.00000', '00000', '00:00:00.000']
 
-        nmr = NMEAReader(gpscom)
-        
-        while not event.is_set():
-            try:
-                (raw_data, parsed_msg) = nmr.read()
-                if parsed_msg:
-                    # Only process GGA messages (GPS fix data)
-                    if parsed_msg.msgID == 'GGA':
-                        coordarr = [
-                            '{0:+09.5f}'.format(round(parsed_msg.lat, 5)),
-                            '{0:+010.5f}'.format(round(parsed_msg.lon, 5)),
-                            '{0:05d}'.format(round(parsed_msg.alt)),
-                            parsed_msg.time.strftime('%H:%M:%S.%f')
-                        ]
-                        queue.append(coordarr)
-                        print(f'readgpd {coordarr}')
-            except (serial.SerialException, ValueError, AttributeError):
-                continue
-            
-                             
+    port = cfg['GPS']['port']
+    baud = cfg['GPS'].getint('baudrate')
+    timeout = cfg['GPS'].getint('timeout')
+    bytesize = cfg['GPS'].getint('bytesize')
+    parity = cfg['GPS']['parity']
+    stopbits = cfg['GPS'].getint('stopbits')
+
+    while not event.is_set():
+        try:
+            with opencom(
+                    port=port,
+                    baudrate=baud,
+                    timeout=timeout,
+                    bytesize=bytesize,
+                    parity=parity,
+                    stopbits=stopbits
+            ) as gpscom:
+
+                nmr = NMEAReader(gpscom)
+
+                while not event.is_set():
+                    try:
+                        raw_data, parsed_msg = nmr.read()
+
+                        # Only process GGA messages
+                        if parsed_msg and parsed_msg.msgID == 'GGA':
+                            try:
+                                coordarr = [
+                                    '{0:+09.5f}'.format(round(parsed_msg.lat, 5)),
+                                    '{0:+010.5f}'.format(round(parsed_msg.lon, 5)),
+                                    '{0:05d}'.format(round(parsed_msg.alt)),
+                                    parsed_msg.time.strftime('%H:%M:%S.%f')
+                                ]
+                                queue.append(coordarr)
+                                print(f'readgps {coordarr}')
+                            except TypeError as type_error:
+                                print(parsed_msg)
+                                print(f'GPS has currently no data, using latest vaild Coordinates until reconnect!')
+                                continue
+
+                    except serial.SerialException as e:
+                        print(f"Serial read error, reopening GPS port: {e}")
+                        break
+
+                    except (ValueError, AttributeError):
+                        continue
+
+                    except Exception as e:
+                        print(f"Unexpected GPS error: {e}")
+                        continue
+
+        except serial.SerialException as e:
+            print(f"Could not open GPS port {port}: {e}, retrying in 5s...")
+            time.sleep(5)
+
+        time.sleep(1)
+
+
 def read_device(cfg, queue, event, date):
 
     device_type = cfg['Default']['device']
@@ -151,6 +186,7 @@ def read_device(cfg, queue, event, date):
     stopbits=cfg[device_type].getint('stopbits')
     separator = cfg[device_type]['separator']
     external_gps = eval(cfg[device_type]['external_gps'])
+
     
     gps_buffer = collections.deque(maxlen=timelag)
 

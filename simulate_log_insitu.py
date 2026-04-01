@@ -11,8 +11,8 @@ def getconfig(filename='insitu.cfg'):
     print(cfgfile)
     return cfg
 
-log_path = 'Logfiles_260326_time-error'
-time_between_datapoints = 0.5
+log_path = 'Logfiles_260325_1\\LocalBuffer\\'
+time_between_datapoints = 0.02
 config_filename = 'insitu.cfg'
 
 config = getconfig(config_filename)
@@ -25,13 +25,13 @@ flighttrack_buffer = config['Paths']['flighttrackfolder']
 os.makedirs(maindir + '/Buffer', exist_ok=True)
 #os.makedirs(maindir + '/Buffer_flighttrack', exist_ok=True)
 
-for f in sorted(os.listdir(maindir + '/' + log_path + '/LocalBuffer')):
+for f in sorted(os.listdir(maindir + '/' + log_path )):
     print(f'Copying {f}')
-    src1 = os.path.join(maindir , log_path + '/LocalBuffer/' + f)
+    src1 = os.path.join(maindir , log_path + f)
     #src2 = os.path.join(maindir , log_path + '/LocalBuffer_track/' + f)
     dst1 = os.path.join(bufferfolder, f)
     #dst2 = os.path.join(flighttrack_buffer, f)
-
+    print(src1, dst1)
     shutil.copy2(src1, dst1)
     #shutil.copy2(src2, dst2)
     time.sleep(time_between_datapoints)

@@ -9,16 +9,9 @@ Creates KML files from data read by log_insitu
 """
 # Icon url https://kml4earth.appspot.com/icons.html
 
-#import pandas as pd
-#import numpy as np
 import time
 import os
-import re
-import numpy as np
 import shutil
-# from datetime import datetime
-import matplotlib.pyplot as plt
-from matplotlib.colors import ListedColormap, Normalize
 import configparser
 
 
@@ -97,7 +90,7 @@ def sync_buffer_to_local(buffer_dir, local_dir, copied, skip_files=0):
                             copied.add(f)
                             new_files.append(f)
                         else:
-                            print(f'{f} took to long and was ignored')
+                            # print(f'{f} took to long and was ignored')
                             os.remove(buffer_dir)
                         break
                     except PermissionError:
@@ -334,27 +327,6 @@ def add_point(lat, lon, name, value, alt, vmin, vmax, nbins, filename="merge2.km
         print(f"WARNING: Could not write {filename}")
     return None
 
-"""
-def add_track_point(lat, lon, alt, filename):
-
-    tmp = filename + ".tmp"
-
-    coord = f"{lon},{lat},{alt}"
-
-    with open(filename, "r", encoding="utf-8") as f:
-        text = f.read()
-
-    new_text = text.replace(
-        "<!-- TRACK_INSERT -->",
-        coord + "\n<!-- TRACK_INSERT -->"
-    )
-
-    with open(tmp, "w", encoding="utf-8") as f:
-        f.write(new_text)
-
-    os.replace(tmp, filename)
-"""
-
     
 def update_current_position(config, lat, lon, alt, name, filename):
     tmp = filename + ".tmp"
@@ -463,27 +435,6 @@ def write_current_pointer(all_files, active_index, output_file):
         print(f"WARNING: Could not write {output_file}")
     return None
 
-def plot_colorbar(xlabel: str, vmin: float, vmax: float, nbins: int = 125):
-    _, r, g, b = generate_color_scale(nbins)
-
-    rgb_array = np.array([r, g, b]).T / 255.0
-    cmap = ListedColormap(rgb_array)
-
-    norm = Normalize(vmin=vmin, vmax=vmax)
-
-    fig, ax = plt.subplots(figsize=(6, 1))
-    fig.subplots_adjust(bottom=0.5)
-
-    cb = plt.colorbar(
-        plt.cm.ScalarMappable(norm=norm, cmap=cmap),
-        cax=ax,
-        orientation='horizontal'
-    )
-    cb.set_label(xlabel)
-
-    plt.savefig(f'colorbar_{xlabel}.png', bbox_inches='tight', dpi=300)
-    plt.close(fig)
-    return None
 
 def extract_coordinates(cols, config, reverse=False):
     device = config['Default']['device']
@@ -543,9 +494,9 @@ def write_KML(config_filename):
     reprocessfolder = config['Paths']['reprocessfolder']
     bufferfolder = config['Paths']['remotefolder']
     kml_savefolder = config['Paths']['kmlpath']
-    # flighttrack_buffer = config['Paths']['flighttrackfolder']
     reprocess = eval(config['Paths']['reprocess'])
     reprocess_skip_files = int(config['Paths']['reprocess_skip_files'])
+    external_gps = eval(config[device]['external_gps'])
 
     if reprocess:
         # Reset KML files
@@ -574,8 +525,6 @@ def write_KML(config_filename):
         vmin, vmax = [float(v) for v in config[device][key].split()]
 
         ranges[specie] = (vmin, vmax)
-
-        plot_colorbar(specie, vmin, vmax, nbins)
 
 
     # -------------------------
@@ -653,29 +602,31 @@ def write_KML(config_filename):
             cols = line.split()
 
             # Test if start of cols is a time value as expected
-            TIMESTAMP_PATTERN = r"\d{2}/\d{2}/\d{4}\s+\d{2}:\d{2}:\d{2}\.\d{3}"
-            matches = re.findall(TIMESTAMP_PATTERN, line)
-            valid_data = len(matches) == 1
-            # print(cols)
-            # print(matches, len(matches), valid_data)
-            if not valid_data:
-                print(f'{fname} more or less than one data string, skipping file!')
-                continue
-            else:
-                pass
+            # TIMESTAMP_PATTERN = r"\d{2}/\d{2}/\d{4}\s+\d{2}:\d{2}:\d{2}\.\d{3}"
+            #TIMESTAMP_PATTERN = r"\d{2}/\d{2}/\d{4}\s+\d{1,2}:\d{1,2}:\d{1,2}(?:\.\d{1,3})?"
+            #matches = re.findall(TIMESTAMP_PATTERN, line)
+            #valid_data = len(matches) == 1
+            #print(cols)
+            #print(matches, len(matches), valid_data)
+            #if not valid_data:
+            #    print(f'{fname} more or less than one data string, skipping file!')
+            #    continue
+            #else:
+            #    pass
 
             # Trying to set GPS DATA and values
             try:
                 lat, lon, alt = extract_coordinates(cols, config)
                 values = extract_species_values(cols, config)
             except (IndexError, ValueError):
-                try:
-                    lat, lon, alt = extract_coordinates(cols, config, reverse=True)
-                    values = extract_species_values(cols, config)
-                    print('Different amount of data given from Device than expected, trying to adjust...!')
-                except (IndexError, ValueError):
-                    print('GPS Index Problem, skipping file!')
-                    continue  # skips the file
+                if external_gps:
+                    try:
+                        lat, lon, alt = extract_coordinates(cols, config, reverse=True)
+                        values = extract_species_values(cols, config)
+                        print('Different amount of data given from Device than expected, trying to adjust...!')
+                    except (IndexError, ValueError):
+                        print('GPS Index Problem, skipping file!')
+                        continue  # skips the file
 
             # Update all species
             for specie in species:
@@ -686,6 +637,14 @@ def write_KML(config_filename):
                     print(f'{fname} had index probelms, skipping file!')
                     continue
                 s = state[specie]
+
+                try:
+                    _ = int(lat)
+                    _ = int(lon)
+                    _ = int(alt)
+                except ValueError:
+                    print('GPS Value Error, could not convert to int!')
+                    continue
 
                 add_point(
                     lat,
@@ -737,66 +696,6 @@ def write_KML(config_filename):
             )
 
             print(f"Processed {fname}")
-
-        """
-        # For flightrack  and current flight position 
-        for fname in new_track_files:
-
-            with open(os.path.join(reprocessfolder + "_track", fname), "r") as f:
-                line = f.readline().strip()
-
-            cols = line.split()
-
-            try:
-                lat = float(cols[1])
-                lon = float(cols[2])
-                alt = float(cols[3])
-            except (ValueError, IndexError):
-                continue
-            
-            # current flight position
-            # KML file update
-            update_current_position(
-                config,
-                lat,
-                lon,
-                alt,
-                name="Current Aircraft Position",
-                filename=current_position_kml
-            )    
-
-            
-            # flighttrack
-            # add point
-            add_track_point(
-                lat,
-                lon,
-                alt,
-                flight_state["kmlfile"]
-            )
-
-            flight_state["point_counter"] += 1
-            
-            # rotate file after 300 points (only for flighttrack)
-            if flight_state["point_counter"] >= points_per_file:
-
-                flight_state["point_counter"] = 0
-                flight_state["file_index"] += 1
-
-                newfile = f"{kml_savefolder}/flighttrack_{flight_state['file_index']}.kml"
-
-                init_track_kml(newfile)
-
-                flight_state["kmlfile"] = newfile
-                flight_state["all_files"].append(newfile)
-
-                write_current_pointer(
-                    flight_state["all_files"],
-                    active_index=flight_state["file_index"] - 1,
-                    output_file=f"{kml_savefolder}/current_flighttrack.kml"
-                )
-                """
-
 
 
 if __name__ == '__main__':
