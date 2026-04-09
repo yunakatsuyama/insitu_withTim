@@ -41,10 +41,11 @@ def getconfig(filename='insitu.cfg'):
     cfg = configparser.ConfigParser()
     cfgfile = os.path.abspath('./' + filename)
     cfg.read(cfgfile)
-    
+
     print(cfgfile)
 
     return cfg
+
 
 @contextmanager
 def opencom(port, baudrate, timeout, **portkwargs):
@@ -165,138 +166,135 @@ def readgps(cfg, queue, event):
 
 
 def read_device(cfg, queue, event, date):
-
     device_type = cfg['Default']['device']
     measnum = cfg['LogParams'].getint('startnum')
 
     gpsdata = ['+000.00000', '+0000.00000', '00000', '00:00:00.000']
-    
 
     # -------------------------
     # DEVICE SETUP
     # -------------------------
 
-
     timelag = cfg[device_type].getint('timelag', fallback=3)
-    port_path=cfg[device_type]['port']
+    port_path = cfg[device_type]['port']
     baudrate = cfg[device_type].getint('baudrate')
-    serial_timeout= cfg[device_type].getint('timeout')
-    bytesize=cfg[device_type].getint('bytesize')
-    parity=cfg[device_type]['parity']
-    stopbits=cfg[device_type].getint('stopbits')
+    serial_timeout = cfg[device_type].getint('timeout')
+    bytesize = cfg[device_type].getint('bytesize')
+    parity = cfg[device_type]['parity']
+    stopbits = cfg[device_type].getint('stopbits')
     separator = cfg[device_type]['separator']
     external_gps = eval(cfg[device_type]['external_gps'])
 
-    
     gps_buffer = collections.deque(maxlen=timelag)
 
-    with opencom(
-        port=port_path,
-        baudrate=baudrate,
-        timeout=serial_timeout,
-        bytesize = bytesize,
-        parity = parity,
-        stopbits = stopbits 
-    ) as devicecom:
-        
-        devicecom.reset_input_buffer()
+    while not event.is_set():
+        try:
+            with opencom(
+                    port=port_path,
+                    baudrate=baudrate,
+                    timeout=serial_timeout,
+                    bytesize=bytesize,
+                    parity=parity,
+                    stopbits=stopbits
+            ) as devicecom:
 
-    # -------------------------
-    # MAIN LOOP
-    # -------------------------
-        while not event.is_set():    
-            data = devicecom.readline().decode('utf-8', errors='ignore').strip()
-            
-            if separator is None:
-                data = data.split()        # split on whitespace
-            else:
-                data = data.split(separator)
-                
-                
-            # ---------------------
-            # GPS handling
-            # ---------------------
-            if queue:
-                gpsdata = queue[-1]
-            # print(f'gpsdata {gpsdata}')
-            gps_buffer.appendleft(gpsdata)
+                devicecom.reset_input_buffer()
 
-            if len(gps_buffer) < timelag:
-                continue
+                while not event.is_set():
+                    try:
+                        raw_data = devicecom.readline()
+                        data = raw_data.decode('utf-8', errors='ignore').strip()
 
-            delayed_gps = gps_buffer.pop()
-            # print(f'gps_buffer {gps_buffer}')
-            # print(f'delayed_gps {delayed_gps}')
-            latest_gps = gpsdata
+                        if separator is None:
+                            data = data.split()  # split on whitespace
+                        else:
+                            data = data.split(separator)
 
-            measnum += 1
+                        # ---------------------
+                        # GPS handling
+                        # ---------------------
+                        if queue:
+                            gpsdata = queue[-1]
+                        # print(f'gpsdata {gpsdata}')
+                        gps_buffer.appendleft(gpsdata)
 
-            # ---------------------
-            # FORMAT OUTPUT
-            # ---------------------
-            # outstr, flightstr = formatter(
-            #     cfg, data, delayed_gps, latest_gps, measnum
-            # )
+                        if len(gps_buffer) < timelag:
+                            continue
 
-            if external_gps:
-                outstr_list = ['  '.join(data), '  '.join(delayed_gps[:3]), str(measnum), '\n']
-            #    flightstr = '  '.join([
-            #latest_gps[3], # time
-            #latest_gps[0], # lat
-            #latest_gps[1], # lon
-            #latest_gps[2], # alt
-            #str(measnum),
-            #'\n'
-            #])
-            elif not external_gps:
-                dummy_gps = ['00:00:00.000','+000.00000', '+0000.00000', '00000']
-                outstr_list = ['  '.join(data), *dummy_gps[1:3], str(measnum), '\n']
-                # flightstr = '  '.join([*dummy_gps, '\n'])
-            else:
-                raise ValueError(f'external_gps is either "True" or "False", currently {external_gps}')
+                        delayed_gps = gps_buffer.pop()
+                        # print(f'gps_buffer {gps_buffer}')
+                        # print(f'delayed_gps {delayed_gps}')
+                        latest_gps = gpsdata
 
-            outstr = '  '.join(outstr_list)
-            
-            
-            time.sleep(1)
-            print(f'outstr {outstr}')
-            # print(f'flightstr {flightstr}')
-            # ---------------------
-            # WRITE FILES
-            # ---------------------
-            timestamp = datetime.datetime.now().strftime('%y%m%dt%H%M%S')
+                        measnum += 1
 
-            logfile_path = (
-                f"{cfg['Paths']['maindir']}/Logfiles_{date}/"
-                f"{timestamp}_{device_type}.dat"
-            )
+                        # ---------------------
+                        # FORMAT OUTPUT
+                        # ---------------------
+                        # outstr, flightstr = formatter(
+                        #     cfg, data, delayed_gps, latest_gps, measnum
+                        # )
 
-            #flightlog_path = (
-            #    f"{cfg['Paths']['maindir']}/Logfiles_{date}/"
-            #    f"{timestamp}_{device_type}_FLIGHT.dat"
-            #)
+                        if external_gps:
+                            outstr_list = [
+                                '  '.join(data),
+                                '  '.join(delayed_gps[:3]),
+                                str(measnum), '\n'
+                            ]
+                        elif not external_gps:
+                            dummy_gps = ['00:00:00.000', '+000.00000', '+0000.00000', '00000']
+                            outstr_list = [
+                                '  '.join(data),
+                                *dummy_gps[1:3],
+                                str(measnum),
+                                '\n'
+                            ]
+                        else:
+                            raise ValueError(f'external_gps is either "True" or "False", currently {external_gps}')
 
-            with open(logfile_path, 'a') as f:
-                f.write(outstr)
+                        outstr = '  '.join(outstr_list)
 
-            #with open(flightlog_path, 'a') as f:
-            #    f.write(flightstr)
+                        # time.sleep(1)  # moved outside of try case
+                        print(f'outstr {outstr}')
+                        # ---------------------
+                        # WRITE FILES
+                        # ---------------------
+                        timestamp = datetime.datetime.now().strftime('%y%m%dt%H%M%S')
 
-            # buffer
-            # with open(f"{cfg['Paths']['maindir']}/Buffer/{measnum:05d}_{timestamp}_{device_type}.dat", 'w') as f:
-            with open(f"{cfg['Paths']['maindir']}/Buffer/{timestamp}_{device_type}.dat", 'w') as f:
-                f.write(outstr)
+                        logfile_path = (
+                            f"{cfg['Paths']['maindir']}/Logfiles_{date}/"
+                            f"{timestamp}_{device_type}.dat"
+                        )
 
-            #with open(f"{cfg['Paths']['maindir']}/Buffer_flighttrack/{measnum:05d}_{timestamp}_{device_type}.dat", 'w') as f:
-            #    f.write(flightstr)
+                        with open(logfile_path, 'a') as f:
+                            f.write(outstr)
 
-            # console
-            sys.stdout.write(outstr)
-            # sys.stdout.write(flightstr)
-            sys.stdout.flush()
-            
-            
-        
+                        with open(f"{cfg['Paths']['maindir']}/Buffer/{timestamp}_{device_type}.dat", 'w') as f:
+                            f.write(outstr)
+
+                        # console
+                        sys.stdout.write(outstr)
+                        # sys.stdout.write(flightstr)
+                        sys.stdout.flush()
+
+                    except serial.SerialException as e:
+                        print(f"Serial read error, reopening device port: {e}")
+                        break
+
+                    except (ValueError, AttributeError):
+                        continue
+
+                    except Exception as e:
+                        print(f"Unexpected device error: {e}")
+                        continue
+
+        except serial.SerialException as e:
+            print(f"Could not open device port {port_path}: {e}, retrying in 5s...")
+            time.sleep(5)
+
+        time.sleep(1)
+
+
 def runlogging():
     """
     Start the logging of the Device.
@@ -314,14 +312,14 @@ def runlogging():
         os.mkdir(cfg['Paths']['maindir'])
     except FileExistsError:
         print('Folder exists already')
-        
+
     try:
         os.mkdir(cfg['Paths']['maindir'] + '/Logfiles_{0}'.format(date))
     except FileExistsError:
         print('Folder exists already')
-        
+
     os.makedirs(cfg['Paths']['maindir'] + '/Buffer', exist_ok=True)
-    
+
     gpsthread = threading.Thread(target=readgps, name='GPSthread', args=[cfg, coordqueue, stopevent])
     devicethread = threading.Thread(target=read_device, args=[cfg, coordqueue, stopevent, date])
 
@@ -329,7 +327,7 @@ def runlogging():
     devicethread.start()
 
     try:
-        while(True):
+        while True:
             time.sleep(1)
     except KeyboardInterrupt:
         stopevent.set()
@@ -344,4 +342,4 @@ def runlogging():
 
 
 if __name__ == '__main__':
-    runlogging()                
+    runlogging()
