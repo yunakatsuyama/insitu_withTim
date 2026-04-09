@@ -68,6 +68,9 @@ def sync_buffer_to_local(buffer_dir, local_dir, copied, skip_files=0):
 
     buffer_files = sorted(os.listdir(buffer_dir))
 
+    if len(buffer_files) >= 300:
+        print(f'WARNING: {len(buffer_files)} files found, copying might take a moment!')
+
     for f in buffer_files[skip_files:]:
 
         if f.endswith(".tmp"):
@@ -89,6 +92,8 @@ def sync_buffer_to_local(buffer_dir, local_dir, copied, skip_files=0):
                                     break
                             copied.add(f)
                             new_files.append(f)
+                            if len(buffer_files) >= 300 and len(new_files) % 10 == 0:
+                                print(f'{len(new_files)} of {len(buffer_files)} files moved to {local_dir}', end='\r')
                         else:
                             # print(f'{f} took to long and was ignored')
                             os.remove(buffer_dir)
@@ -99,6 +104,10 @@ def sync_buffer_to_local(buffer_dir, local_dir, copied, skip_files=0):
 
             except FileNotFoundError:
                 continue
+
+    if len(buffer_files) >= 300:
+        print(f'All Buffer files copied. Starting KML creation...')
+
     return new_files
 
 
@@ -172,7 +181,7 @@ def generate_styles(nbins, config):
     <color>{color}</color>
     <scale>0.6</scale>
     <Icon>
-      <href>{icon_path}</href>
+      <href>../../icon_folder/road_shield3.png</href>
     </Icon>
   </IconStyle>
   <LabelStyle>
@@ -180,6 +189,8 @@ def generate_styles(nbins, config):
 </LabelStyle>
 </Style>
 """
+
+        #       <href>{icon_path}</href>
     return styles
 
 
@@ -634,7 +645,7 @@ def write_KML(config_filename):
                 try:
                     value = values[specie]
                 except KeyError:
-                    print(f'{fname} had index probelms, skipping file!')
+                    print(f'{fname} had index problems, skipping file!')
                     continue
                 s = state[specie]
 
