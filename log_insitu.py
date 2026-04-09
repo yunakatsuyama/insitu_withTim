@@ -254,7 +254,7 @@ def read_device(cfg, queue, event, date):
 
                         outstr = '  '.join(outstr_list)
 
-                        # time.sleep(1)  # moved outside of try case
+                        time.sleep(1)
                         print(f'outstr {outstr}')
                         # ---------------------
                         # WRITE FILES
