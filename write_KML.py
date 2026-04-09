@@ -395,10 +395,13 @@ def extract_coordinates(cols, config, ):
     alt_idx = int(config[device]['alt'])
     
     # print(len(cols))
-    lat = float(cols[lat_idx])
-    lon = float(cols[lon_idx])
-    alt = float(cols[alt_idx])
-
+    try: 
+        lat = float(cols[lat_idx])
+        lon = float(cols[lon_idx])
+        alt = float(cols[alt_idx])
+    except:
+        return None
+    
     return lat, lon, alt
 
 def extract_species_values(cols, config):
@@ -417,7 +420,8 @@ def extract_species_values(cols, config):
         try:
             values[sp] = float(cols[col_index])
         except (ValueError, IndexError):
-            continue
+            #continue
+            return None
 
     return values
 
@@ -599,9 +603,18 @@ def write_KML(config_filename):
             line = line.replace(",", "")
             cols = line.split()
 
-            lat, lon, alt = extract_coordinates(cols, config)
+            coords = extract_coordinates(cols, config)
+            if coords is None:
+                print(f"Skipping {fname}: invalid coordinates")
+                continue
+            
+            lat, lon, alt = coords
+
             values = extract_species_values(cols, config)
             
+            if values is None:
+                print(f"SKIP FILE {fname}")
+                continue
     
             # Update all species
             for specie in species:
