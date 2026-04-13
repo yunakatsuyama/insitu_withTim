@@ -216,15 +216,16 @@ def read_device(cfg, queue, event, date):
                         if queue:
                             gpsdata = queue[-1]
                         # print(f'gpsdata {gpsdata}')
-                        gps_buffer.appendleft(gpsdata)
+                        # latest_gps = gpsdata
+                        #gps_buffer.appendleft(gpsdata)
 
-                        if len(gps_buffer) < timelag:
-                            continue
+                        #if len(gps_buffer) < timelag:
+                        #    continue
 
-                        delayed_gps = gps_buffer.pop()
+                        # delayed_gps = gps_buffer.pop()
                         # print(f'gps_buffer {gps_buffer}')
                         # print(f'delayed_gps {delayed_gps}')
-                        latest_gps = gpsdata
+                        delayed_gps = gpsdata
 
                         measnum += 1
 
