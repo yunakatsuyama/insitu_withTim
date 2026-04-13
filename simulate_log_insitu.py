@@ -11,8 +11,10 @@ def getconfig(filename='insitu.cfg'):
     print(cfgfile)
     return cfg
 
-log_path = 'Logfiles_260325_1\\LocalBuffer\\'
-time_between_datapoints = 0.02
+#log_path = 'Logfiles_260325_1\\LocalBuffer\\'
+#log_path = 'Logfiles_260410\\'
+log_path = 'Logfiles_260326_1\\LocalBuffer\\'
+time_between_datapoints = 0.1
 config_filename = 'insitu.cfg'
 
 config = getconfig(config_filename)
@@ -20,7 +22,7 @@ maindir = config['Paths']['maindir']
 reprocessfolder = config['Paths']['reprocessfolder']
 bufferfolder = config['Paths']['remotefolder']
 kml_savefolder = config['Paths']['kmlpath']
-flighttrack_buffer = config['Paths']['flighttrackfolder']
+# flighttrack_buffer = config['Paths']['flighttrackfolder']
 
 os.makedirs(maindir + '/Buffer', exist_ok=True)
 #os.makedirs(maindir + '/Buffer_flighttrack', exist_ok=True)

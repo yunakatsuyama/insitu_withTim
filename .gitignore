@@ -18,3 +18,8 @@ Thumbs.db
 
 Data
 .idea
+colorbar_*
+icon_folder/
+plot_colorbars.py
+realtime_*
+temp.py

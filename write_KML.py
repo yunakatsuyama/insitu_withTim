@@ -13,6 +13,9 @@ import time
 import os
 import shutil
 import configparser
+from datetime import datetime, timedelta
+from collections import deque
+
 
 
 def read_config(filename):
@@ -54,6 +57,7 @@ def sync_buffer_to_local(buffer_dir, local_dir, copied, skip_files=0):
     Adds all moved files to the set copied
     Parameters
     ----------
+    skip_files
     buffer_dir
     local_dir
     copied
@@ -68,8 +72,8 @@ def sync_buffer_to_local(buffer_dir, local_dir, copied, skip_files=0):
 
     buffer_files = sorted(os.listdir(buffer_dir))
 
-    if len(buffer_files) >= 300:
-        print(f'WARNING: {len(buffer_files)} files found, copying might take a moment!')
+    if len(buffer_files) >= 100:
+        print(f'WARNING: {len(buffer_files)} files found in buffer, copying might take a moment!')
 
     for f in buffer_files[skip_files:]:
 
@@ -92,7 +96,7 @@ def sync_buffer_to_local(buffer_dir, local_dir, copied, skip_files=0):
                                     break
                             copied.add(f)
                             new_files.append(f)
-                            if len(buffer_files) >= 300 and len(new_files) % 10 == 0:
+                            if len(buffer_files) >= 100 and len(new_files) % 10 == 0:
                                 print(f'{len(new_files)} of {len(buffer_files)} files moved to {local_dir}', end='\r')
                         else:
                             # print(f'{f} took to long and was ignored')
@@ -105,7 +109,7 @@ def sync_buffer_to_local(buffer_dir, local_dir, copied, skip_files=0):
             except FileNotFoundError:
                 continue
 
-    if len(buffer_files) >= 300:
+    if len(buffer_files) >= 100:
         print(f'All Buffer files copied. Starting KML creation...')
 
     return new_files
@@ -492,6 +496,26 @@ def extract_species_values(cols, config):
     return values
 
 
+
+def parse_timestamp(fname):
+    base = os.path.basename(fname)
+    timestamp_str = base.split("_")[0]  # YYMMDDtHHMMSS
+    return datetime.strptime(timestamp_str, "%y%m%dt%H%M%S")
+
+
+def find_closest_file(buffer, target_time):
+    closest = None
+    min_diff = None
+
+    for t, path in buffer:
+        diff = abs((t - target_time).total_seconds())
+
+        if min_diff is None or diff < min_diff:
+            min_diff = diff
+            closest = path
+    return closest, min_diff
+
+
 # ===============
 #  MAIN 
 # ===============
@@ -508,6 +532,7 @@ def write_KML(config_filename):
     reprocess = eval(config['Paths']['reprocess'])
     reprocess_skip_files = int(config['Paths']['reprocess_skip_files'])
     external_gps = eval(config[device]['external_gps'])
+    timelag = config[device].getint('timelag', fallback=3)
 
     if reprocess:
         # Reset KML files
@@ -583,6 +608,7 @@ def write_KML(config_filename):
     # Realtime loop
     # =============================+
     copied_files = set()
+    time_buffer = deque()
 
     while True:
 
@@ -612,18 +638,6 @@ def write_KML(config_filename):
             line = line.replace(",", "")
             cols = line.split()
 
-            # Test if start of cols is a time value as expected
-            # TIMESTAMP_PATTERN = r"\d{2}/\d{2}/\d{4}\s+\d{2}:\d{2}:\d{2}\.\d{3}"
-            #TIMESTAMP_PATTERN = r"\d{2}/\d{2}/\d{4}\s+\d{1,2}:\d{1,2}:\d{1,2}(?:\.\d{1,3})?"
-            #matches = re.findall(TIMESTAMP_PATTERN, line)
-            #valid_data = len(matches) == 1
-            #print(cols)
-            #print(matches, len(matches), valid_data)
-            #if not valid_data:
-            #    print(f'{fname} more or less than one data string, skipping file!')
-            #    continue
-            #else:
-            #    pass
 
             # Trying to set GPS DATA and values
             try:
@@ -637,7 +651,46 @@ def write_KML(config_filename):
                         print('Different amount of data given from Device than expected, trying to adjust...!')
                     except (IndexError, ValueError):
                         print('GPS Index Problem, skipping file!')
-                        continue  # skips the file
+                        continue
+                else:
+                    print('GPS Index Problem, skipping file!')
+                    continue
+
+            # ------------------
+            # Timelag
+            # ------------------
+
+            full_path = os.path.join(reprocessfolder, fname)
+            current_time = parse_timestamp(fname)
+
+            # Add good data point to time_buffer
+            time_buffer.append((current_time, full_path))
+
+            # Keep time_buffer with only needed times
+            while len(time_buffer) > timelag * 5:
+                time_buffer.popleft()
+
+            try:
+                target_time = current_time - timedelta(seconds=timelag)
+                lagged_file, time_error = find_closest_file(time_buffer, target_time)
+
+                if lagged_file is not None:
+                    if time_error != 0.0:
+                        print(f'Timelag off by {time_error:.0f} seconds from selected device timelag.')
+
+                    with open(lagged_file, "r") as f:
+                        lag_line = f.readline().strip()
+
+                    lag_line = lag_line.replace(",", "")
+                    lag_cols = lag_line.split()
+
+                    lag_lat, lag_lon, lag_alt = extract_coordinates(lag_cols, config)
+
+                    lat, lon, alt = lag_lat, lag_lon, lag_alt
+
+            except Exception as e:
+                print(f'Timelag failed, Exception: {e}')
+
 
             # Update all species
             for specie in species:
@@ -706,7 +759,11 @@ def write_KML(config_filename):
                 filename=current_position_kml
             )
 
+
+
             print(f"Processed {fname}")
+
+
 
 
 if __name__ == '__main__':
