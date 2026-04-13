@@ -292,7 +292,7 @@ def value_to_bin(value, vmin, vmax, nbins):
     return int((value - vmin) / step)
 
 
-def add_point(lat, lon, name, value, alt, vmin, vmax, nbins, filename="merge2.kml"):
+def add_point(lat, lon, name, value, alt, vmin, vmax, nbins, filename="merge2.kml", reprocess: bool = False):
     """
     data_dict: {column_name: value, ...}
     """
@@ -311,8 +311,12 @@ def add_point(lat, lon, name, value, alt, vmin, vmax, nbins, filename="merge2.km
 <Placemark>
   <name>{name}</name>
   <styleUrl>#bin_{style_id}</styleUrl>
-  <ExtendedData><Data name="concentration">
-    <value>{value, alt}</value>
+  <ExtendedData>
+  <Data name="Concentration">
+    <value>{value}</value>
+  </Data>
+  <Data name="Altitude">
+    <value>{alt}</value>
   </Data>
   </ExtendedData>
   <Point>
@@ -322,10 +326,40 @@ def add_point(lat, lon, name, value, alt, vmin, vmax, nbins, filename="merge2.km
   </Point>
 </Placemark>
 """
+    placemark_reprocess = f"""
+<Placemark>
+  <name>{name}</name>
+  <styleUrl>#bin_{style_id}</styleUrl>
+  <ExtendedData>
+  <Data name="Concentration">
+    <value>{value}</value>
+  </Data>
+  <Data name="Altitude">
+    <value>{alt}</value>
+  </Data>
+  <Data name="lat">
+    <value>{lat}</value>
+  </Data>
+  <Data name="lon">
+    <value>{lon}</value>
+  </Data>
+  </ExtendedData>
+  <Point>
+    <extrude>1</extrude>
+    <altitudeMode>relativeToGround</altitudeMode>
+    <coordinates>{lon},{lat},{alt}</coordinates>
+  </Point>
+</Placemark>
+"""
+    if reprocess:
+        used_placemark = placemark_reprocess
+    else:
+        used_placemark = placemark
+
 
     new_text = text.replace(
         "<!-- INSERT_HERE -->",
-        placemark + "\n<!-- INSERT_HERE -->"
+        used_placemark + "\n<!-- INSERT_HERE -->"
     )
 
     with open(tmp, "w", encoding="utf-8") as f:
@@ -610,17 +644,19 @@ def write_KML(config_filename):
     copied_files = set()
     time_buffer = deque()
 
+    initial_reprocess = reprocess
+
     while True:
 
         os.makedirs(reprocessfolder, exist_ok=True)
-        if reprocess:
+        if initial_reprocess:
             # Mark files in LocalBuffer as new_files
             new_files = reprocess_file_reader(reprocessfolder, copied_files, reprocess_skip_files)
 
             # Set reprocess as False to only reprocess them once!
-            reprocess = False
+            initial_reprocess = False
 
-        elif not reprocess:
+        elif not initial_reprocess:
             # Copy only new buffer files
             new_files = sync_buffer_to_local(
                 buffer_dir=bufferfolder,
@@ -713,13 +749,14 @@ def write_KML(config_filename):
                 add_point(
                     lat,
                     lon,
-                    cols[0],
+                    cols[1],
                     value,
                     alt,
                     s["vmin"],
                     s["vmax"],
                     nbins,
-                    s["kmlfile"]
+                    s["kmlfile"],
+                    reprocess
                 )
 
                 try:
@@ -759,11 +796,7 @@ def write_KML(config_filename):
                 filename=current_position_kml
             )
 
-
-
             print(f"Processed {fname}")
-
-
 
 
 if __name__ == '__main__':
