@@ -14,7 +14,7 @@ def getconfig(filename='insitu.cfg'):
 #log_path = 'Logfiles_260325_1\\LocalBuffer\\'
 #log_path = 'Logfiles_260410\\'
 log_path = 'Logfiles_260326_1\\LocalBuffer\\'
-time_between_datapoints = 0.1
+time_between_datapoints = 0.3
 config_filename = 'insitu.cfg'
 
 config = getconfig(config_filename)

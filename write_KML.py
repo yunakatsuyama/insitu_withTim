@@ -51,7 +51,7 @@ def read_config(filename):
     return config
 
 
-def sync_buffer_to_local(buffer_dir, local_dir, copied, skip_files=0):
+def sync_buffer_to_local(buffer_dir, local_dir, copied, start_index=0, end_index=None, single_file=True, ):
     """
     Moves files from buffer_dir to local_dir.
     Adds all moved files to the set copied
@@ -66,16 +66,18 @@ def sync_buffer_to_local(buffer_dir, local_dir, copied, skip_files=0):
     -------
 
     """
+
+
     os.makedirs(local_dir, exist_ok=True)
 
     new_files = []
 
     buffer_files = sorted(os.listdir(buffer_dir))
 
-    if len(buffer_files) >= 100:
-        print(f'WARNING: {len(buffer_files)} files found in buffer, copying might take a moment!')
+    if end_index is None:
+        end_index = len(buffer_files)
 
-    for f in buffer_files[skip_files:]:
+    for f in buffer_files[start_index:end_index]:
 
         if f.endswith(".tmp"):
             continue
@@ -95,12 +97,13 @@ def sync_buffer_to_local(buffer_dir, local_dir, copied, skip_files=0):
                                 if os.path.getsize(dst) > 0:
                                     break
                             copied.add(f)
-                            new_files.append(f)
-                            if len(buffer_files) >= 100 and len(new_files) % 10 == 0:
-                                print(f'{len(new_files)} of {len(buffer_files)} files moved to {local_dir}', end='\r')
+                            if single_file:
+                                yield f
+                            else:
+                                new_files.append(f)
                         else:
                             # print(f'{f} took to long and was ignored')
-                            os.remove(buffer_dir)
+                            os.remove(src)
                         break
                     except PermissionError:
                         # print(f'{f} move had a permission error, file still busy.')
@@ -108,9 +111,6 @@ def sync_buffer_to_local(buffer_dir, local_dir, copied, skip_files=0):
 
             except FileNotFoundError:
                 continue
-
-    if len(buffer_files) >= 100:
-        print(f'All Buffer files copied. Starting KML creation...')
 
     return new_files
 
@@ -122,9 +122,15 @@ def reprocess_file_reader(local_dir, copied, skip_files=0):
     old_buffer_files = sorted(os.listdir(local_dir))
 
     if skip_files >= len(old_buffer_files):
-        print(f'WARNING: reprocess_skip_files : {skip_files} is bigger than files in '
-              f'LocalBuffer {len(old_buffer_files)}, loading most recent 100 files...')
-        skip_files = len(old_buffer_files) - 100
+        print(f'WARNING: reprocess_skip_files : {skip_files} is bigger than files in LocalBuffer:'
+              f' {len(old_buffer_files)}')
+        if len(old_buffer_files) > 99:
+            skip_files = len(old_buffer_files) - 100
+            print('Loading 100 most recent files')
+        else:
+            skip_files = 0
+            print('Less than 100 files in buffer, reprocessing all anyway...')
+
 
     for f in old_buffer_files[skip_files:]:
         copied.add(f)
@@ -550,6 +556,25 @@ def find_closest_file(buffer, target_time):
     return closest, min_diff
 
 
+def override_config(config, value, header, variable, config_filename):
+    config[header][variable] = str(value)
+    with open(config_filename, 'w') as configfile:
+        config.write(configfile)
+
+
+def update_buffer_skip_files(config_filename, new_value):
+    with open(config_filename, "r") as f:
+        content = f.read()
+
+    content = content.replace(
+        f"buffer_skip_files : {new_value+1}",
+        f"buffer_skip_files : {new_value}"
+    )
+
+    with open(config_filename, "w") as f:
+        f.write(content)
+
+
 # ===============
 #  MAIN 
 # ===============
@@ -565,6 +590,7 @@ def write_KML(config_filename):
     kml_savefolder = config['Paths']['kmlpath']
     reprocess = eval(config['Paths']['reprocess'])
     reprocess_skip_files = int(config['Paths']['reprocess_skip_files'])
+    buffer_skip_files = int(config['Paths']['buffer_skip_files'])
     external_gps = eval(config[device]['external_gps'])
     timelag = config[device].getint('timelag', fallback=3)
 
@@ -646,12 +672,30 @@ def write_KML(config_filename):
 
     initial_reprocess = reprocess
 
+    time_end_loop = None
+
     while True:
+        time_start_loop = time.time()
+
+        # Moving skipped files from Buffer to LocalBuffer when program is not busy to clean up buffer.
+        # If previous processing took less than 0.8 seconds enough time should be free to move one file without blocking
+        # the rest of the program.
+        if time_end_loop is not None and buffer_skip_files != 0:
+            time_delta = time_end_loop - time_start_loop
+            if time_delta < 0.8:
+                moved_files = sync_buffer_to_local(bufferfolder, reprocessfolder, set(), 0, 1)
+                buffer_skip_files -= 1
+                #override_config(config, buffer_skip_files, 'Paths', 'buffer_skip_files', config_filename)
+                update_buffer_skip_files(config_filename, buffer_skip_files)
+                for f in moved_files:
+                    pass
+                    #print(f'Moved {f} without creating KML')
+
 
         os.makedirs(reprocessfolder, exist_ok=True)
         if initial_reprocess:
             # Mark files in LocalBuffer as new_files
-            new_files = reprocess_file_reader(reprocessfolder, copied_files, reprocess_skip_files)
+            new_files = reprocess_file_reader(reprocessfolder, copied_files, reprocess_skip_files,)
 
             # Set reprocess as False to only reprocess them once!
             initial_reprocess = False
@@ -661,7 +705,8 @@ def write_KML(config_filename):
             new_files = sync_buffer_to_local(
                 buffer_dir=bufferfolder,
                 local_dir=reprocessfolder,
-                copied=copied_files
+                copied=copied_files,
+                start_index=buffer_skip_files,
             )
         else:
             raise ValueError(f'reprocess is either "True" or "False", currently {reprocess}')
@@ -797,6 +842,7 @@ def write_KML(config_filename):
             )
 
             print(f"Processed {fname}")
+        time_end_loop = time.time()
 
 
 if __name__ == '__main__':
