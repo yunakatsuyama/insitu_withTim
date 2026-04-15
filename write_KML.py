@@ -578,7 +578,7 @@ def update_buffer_skip_files(config_filename, new_value):
 # ===============
 #  MAIN 
 # ===============
-def write_KML(config_filename):
+def write_KML(config_filename, compress: bool = False):
     
     config = read_config(config_filename)
     device = config['Default']['device']
@@ -588,9 +588,16 @@ def write_KML(config_filename):
     reprocessfolder = config['Paths']['reprocessfolder']
     bufferfolder = config['Paths']['remotefolder']
     kml_savefolder = config['Paths']['kmlpath']
-    reprocess = eval(config['Paths']['reprocess'])
-    reprocess_skip_files = int(config['Paths']['reprocess_skip_files'])
-    buffer_skip_files = int(config['Paths']['buffer_skip_files'])
+    if compress:
+        reprocess = True
+        reprocess_skip_files = 0
+        buffer_skip_files = 0
+        points_per_file = 100000000
+    else:
+        reprocess = eval(config['Paths']['reprocess'])
+        reprocess_skip_files = int(config['Paths']['reprocess_skip_files'])
+        buffer_skip_files = int(config['Paths']['buffer_skip_files'])
+        points_per_file = int(config['LogParams']['points_per_file'])
     external_gps = eval(config[device]['external_gps'])
     timelag = config[device].getint('timelag', fallback=3)
 
@@ -626,7 +633,7 @@ def write_KML(config_filename):
     # -------------------------
     # Initialize per-species state
     # -------------------------
-    points_per_file = 300
+    # points_per_file = 300
 
     state = {}
 
@@ -684,13 +691,12 @@ def write_KML(config_filename):
             time_delta = time_end_loop - time_start_loop
             if time_delta < 0.8:
                 moved_files = sync_buffer_to_local(bufferfolder, reprocessfolder, set(), 0, 1)
-                buffer_skip_files -= 1
-                #override_config(config, buffer_skip_files, 'Paths', 'buffer_skip_files', config_filename)
-                update_buffer_skip_files(config_filename, buffer_skip_files)
                 for f in moved_files:
-                    pass
                     #print(f'Moved {f} without creating KML')
-
+                    pass
+                buffer_skip_files -= 1
+                # Update the number of files left to skip in the config file to be consistent after restart
+                update_buffer_skip_files(config_filename, buffer_skip_files)
 
         os.makedirs(reprocessfolder, exist_ok=True)
         if initial_reprocess:
@@ -719,7 +725,6 @@ def write_KML(config_filename):
             line = line.replace(",", "")
             cols = line.split()
 
-
             # Trying to set GPS DATA and values
             try:
                 lat, lon, alt = extract_coordinates(cols, config)
@@ -736,6 +741,10 @@ def write_KML(config_filename):
                 else:
                     print('GPS Index Problem, skipping file!')
                     continue
+
+            if lat == 0.0 or lon == 0.0:
+                print('One or more GPS at 0°, skipping file!')
+                continue
 
             # ------------------
             # Timelag
@@ -756,7 +765,7 @@ def write_KML(config_filename):
                 lagged_file, time_error = find_closest_file(time_buffer, target_time)
 
                 if lagged_file is not None:
-                    if time_error != 0.0:
+                    if time_error not in [0.0, 1.0]:
                         print(f'Timelag off by {time_error:.0f} seconds from selected device timelag.')
 
                     with open(lagged_file, "r") as f:
@@ -811,7 +820,7 @@ def write_KML(config_filename):
 
                 s["point_counter"] += 1
 
-                # Rotate file after 300 points
+                # Rotate file after points_per_file amount of points
                 if s["point_counter"] >= points_per_file:
 
                     s["point_counter"] = 0
@@ -843,6 +852,9 @@ def write_KML(config_filename):
 
             print(f"Processed {fname}")
         time_end_loop = time.time()
+        if compress:
+            print('KML finished')
+            break
 
 
 if __name__ == '__main__':
