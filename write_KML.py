@@ -177,12 +177,17 @@ def generate_color_scale(nbins):
         b_.append(b)
     return colors, r_, g_, b_
 
-def generate_styles(nbins, config):
+def generate_styles(nbins, config, compress):
     colors, _, _, _ = generate_color_scale(nbins)
     iconfolder = config['Paths']['iconfolder']
-    icon_path = os.path.abspath(
-        os.path.join(iconfolder, "road_shield3.png")
-    )
+    #icon_path = os.path.abspath(
+    #    os.path.join(iconfolder, "road_shield3.png")
+    #)
+    if compress:
+        icon_path ='road_shield3.png'
+    else:
+        icon_path = '../../icon_folder/road_shield3.png'
+
     styles = ""
     for i, color in enumerate(colors):
         styles += f"""
@@ -191,7 +196,7 @@ def generate_styles(nbins, config):
     <color>{color}</color>
     <scale>0.6</scale>
     <Icon>
-      <href>../../icon_folder/road_shield3.png</href>
+      <href>{icon_path}</href>
     </Icon>
   </IconStyle>
   <LabelStyle>
@@ -204,9 +209,9 @@ def generate_styles(nbins, config):
     return styles
 
 
-def init_kml(filename, nbins, config):
+def init_kml(filename, nbins, config, compress):
     tmp = filename + ".tmp"
-    styles = generate_styles(nbins, config)
+    styles = generate_styles(nbins, config, compress)
     content = f"""<?xml version="1.0" encoding="UTF-8"?>
     <kml xmlns="http://www.opengis.net/kml/2.2">
     <Document>
@@ -298,7 +303,8 @@ def value_to_bin(value, vmin, vmax, nbins):
     return int((value - vmin) / step)
 
 
-def add_point(lat, lon, name, value, alt, vmin, vmax, nbins, filename="merge2.kml", reprocess: bool = False):
+def add_point(lat, lon, name, value, alt, vmin, vmax, nbins, filename="merge2.kml", reprocess: bool = False,
+              compress: bool = False):
     """
     data_dict: {column_name: value, ...}
     """
@@ -643,7 +649,7 @@ def write_KML(config_filename, compress: bool = False):
 
         kmlfile = f"{kml_savefolder}/{specie}_{file_index}.kml"
 
-        init_kml(kmlfile, nbins, config)
+        init_kml(kmlfile, nbins, config, compress)
 
         vmin, vmax = ranges[specie]
 
@@ -810,7 +816,8 @@ def write_KML(config_filename, compress: bool = False):
                     s["vmax"],
                     nbins,
                     s["kmlfile"],
-                    reprocess
+                    reprocess,
+                    compress
                 )
 
                 try:
@@ -853,8 +860,8 @@ def write_KML(config_filename, compress: bool = False):
             print(f"Processed {fname}")
         time_end_loop = time.time()
         if compress:
-            print('KML finished')
-            break
+            print('KML creation finished')
+            return config, kml_savefolder, species
 
 
 if __name__ == '__main__':
