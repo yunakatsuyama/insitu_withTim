@@ -835,7 +835,7 @@ def write_KML(config_filename, compress: bool = False):
 
                     newfile = f"{kml_savefolder}/{specie}_{s['file_index']}.kml"
 
-                    init_kml(newfile, nbins, config)
+                    init_kml(newfile, nbins, config, False)
 
                     s["kmlfile"] = newfile
                     s["all_files"].append(newfile)
