@@ -685,10 +685,12 @@ def write_KML(config_filename, compress: bool = False):
 
     initial_reprocess = reprocess
 
+    time_start_loop = None
     time_end_loop = None
 
     while True:
-        time_start_loop = time.time()
+        if buffer_skip_files != 0:
+            time_start_loop = time.time()
 
         # Moving skipped files from Buffer to LocalBuffer when program is not busy to clean up buffer.
         # If previous processing took less than 0.8 seconds enough time should be free to move one file without blocking
@@ -858,7 +860,10 @@ def write_KML(config_filename, compress: bool = False):
             )
 
             print(f"Processed {fname}")
-        time_end_loop = time.time()
+
+        if buffer_skip_files != 0:
+            time_end_loop = time.time()
+
         if compress:
             print('KML creation finished')
             return config, kml_savefolder, species
