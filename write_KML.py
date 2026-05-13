@@ -1,15 +1,24 @@
+# Created by Yuna Katsuyama and Tim Suhling
+# University of Bremen
+# yuna@uni-bremen.de
+# timsuh@uni-bremen.de
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Creates KML files from data read by log_insitu
+"""
 # Icon url https://kml4earth.appspot.com/icons.html
 
-import pandas as pd
-import numpy as np
 import time
 import os
 import shutil
-from datetime import datetime
 import configparser
+from datetime import datetime, timedelta
+from collections import deque
+
+
 
 def read_config(filename):
-#def read_config(filename = ):
     """Reads config file and returns config dictionary.
 
     Parameters
@@ -38,21 +47,37 @@ def read_config(filename):
     config.read(file)
     print("FILES READ:", config.read(file))   
     print("SECTIONS FOUND:", config.sections())    
-        #files_read = config.read(file)
-        #print("Config file read:", files_read)
-        #print("Sections found:", config.sections())
-        
 
     return config
 
-    
-    
-def sync_buffer_to_local(buffer_dir, local_dir, copied):
+
+def sync_buffer_to_local(buffer_dir, local_dir, copied, start_index=0, end_index=None, single_file=True, ):
+    """
+    Moves files from buffer_dir to local_dir.
+    Adds all moved files to the set copied
+    Parameters
+    ----------
+    skip_files
+    buffer_dir
+    local_dir
+    copied
+
+    Returns copied set with moved files
+    -------
+
+    """
+
+
     os.makedirs(local_dir, exist_ok=True)
 
     new_files = []
 
-    for f in sorted(os.listdir(buffer_dir)):
+    buffer_files = sorted(os.listdir(buffer_dir))
+
+    if end_index is None:
+        end_index = len(buffer_files)
+
+    for f in buffer_files[start_index:end_index]:
 
         if f.endswith(".tmp"):
             continue
@@ -63,23 +88,54 @@ def sync_buffer_to_local(buffer_dir, local_dir, copied):
             dst = os.path.join(local_dir, f)
 
             try:
-                #shutil.copy2(src, dst)
-                # shutil.move(src, dst)
                 for _ in range(5):
                     try:
-                        shutil.move(src, dst)
+                        if os.path.getsize(src) > 0 :
+                            shutil.move(src, dst)
+                            while True:
+                                time.sleep(0.1)
+                                if os.path.getsize(dst) > 0:
+                                    break
+                            copied.add(f)
+                            if single_file:
+                                yield f
+                            else:
+                                new_files.append(f)
+                        else:
+                            # print(f'{f} took to long and was ignored')
+                            os.remove(src)
                         break
                     except PermissionError:
-                        print(f'{f} move had a permission error, file still busy.')
+                        # print(f'{f} move had a permission error, file still busy.')
                         time.sleep(0.1)
-                copied.add(f)
-                new_files.append(f)
 
             except FileNotFoundError:
                 continue
 
+    return new_files
 
 
+def reprocess_file_reader(local_dir, copied, skip_files=0):
+    os.makedirs(local_dir, exist_ok=True)
+    new_files = []
+
+    old_buffer_files = sorted(os.listdir(local_dir))
+
+    if skip_files >= len(old_buffer_files):
+        print(f'WARNING: reprocess_skip_files : {skip_files} is bigger than files in LocalBuffer:'
+              f' {len(old_buffer_files)}')
+        if len(old_buffer_files) > 99:
+            skip_files = len(old_buffer_files) - 100
+            print('Loading 100 most recent files')
+        else:
+            skip_files = 0
+            print('Less than 100 files in buffer, reprocessing all anyway...')
+
+
+    for f in old_buffer_files[skip_files:]:
+        copied.add(f)
+        new_files.append(f)
+    print(f'REPROCESSING FILES: {len(new_files)}')
     return new_files
 
 
@@ -92,32 +148,46 @@ def local_data_reader(local_dir="LocalBuffer"):
             lines = f.readlines()
             if len(lines) > 1:
                 yield lines[1].strip()   # skip header
+    return None
 
 
 # == KML definition ==========
 # colors = ["ff0000ff", "ff00ffff", "ff00ff00", "ff00ff00", "ff0000ff"]
 def generate_color_scale(nbins):
     colors = []
+    r_ = []
+    g_ = []
+    b_ = []
 
     for i in range(nbins):
         ratio = i / (nbins - 1)
 
-        r = int(255 * ratio)
-        g = 0
-        b = int(255 * (1 - ratio))
+        if ratio > 0.5:
+            r = int(255 * (ratio-0.5) * 2)
+            g = int(255 * (1 - (ratio-0.5)*2))
+            b = 0
+        else:
+            r = 0
+            g = int(255 * ratio*2)
+            b = int(255 * (1 - ratio*2))
 
-        # KML format: AABBGGRR
-        color = f"ff{b:02x}{g:02x}{r:02x}"
-        colors.append(color)
+        colors.append(f"ff{b:02x}{g:02x}{r:02x}")
+        r_.append(r)
+        g_.append(g)
+        b_.append(b)
+    return colors, r_, g_, b_
 
-    return colors
-
-def generate_styles(nbins, config):
-    colors = generate_color_scale(nbins)
+def generate_styles(nbins, config, compress):
+    colors, _, _, _ = generate_color_scale(nbins)
     iconfolder = config['Paths']['iconfolder']
-    icon_path = os.path.abspath(
-        os.path.join(iconfolder, "road_shield3.png")
-    )
+    #icon_path = os.path.abspath(
+    #    os.path.join(iconfolder, "road_shield3.png")
+    #)
+    if compress:
+        icon_path ='road_shield3.png'
+    else:
+        icon_path = '../../icon_folder/road_shield3.png'
+
     styles = ""
     for i, color in enumerate(colors):
         styles += f"""
@@ -134,13 +204,14 @@ def generate_styles(nbins, config):
 </LabelStyle>
 </Style>
 """
+
+        #       <href>{icon_path}</href>
     return styles
 
-def init_kml(filename, nbins, config):
-    
 
+def init_kml(filename, nbins, config, compress):
     tmp = filename + ".tmp"
-    styles = generate_styles(nbins, config)
+    styles = generate_styles(nbins, config, compress)
     content = f"""<?xml version="1.0" encoding="UTF-8"?>
     <kml xmlns="http://www.opengis.net/kml/2.2">
     <Document>
@@ -156,10 +227,10 @@ def init_kml(filename, nbins, config):
         f.write(content)
 
     os.replace(tmp, filename)
+    return None
 
     
 def init_track_kml(filename):
-
     tmp = filename + ".tmp"
     content = """<?xml version="1.0" encoding="UTF-8"?>
 <kml xmlns="http://www.opengis.net/kml/2.2">
@@ -188,10 +259,10 @@ def init_track_kml(filename):
 </Document>
 </kml>
 """
-
     with open(tmp, "w", encoding="utf-8") as f:
         f.write(content)
     os.replace(tmp, filename)
+    return None
     
     
 def init_current_kml(config, filename):
@@ -219,6 +290,7 @@ def init_current_kml(config, filename):
 """
     with open(filename, "w", encoding="utf-8") as f:
         f.write(content)
+    return None
         
                 
 def value_to_bin(value, vmin, vmax, nbins):
@@ -230,7 +302,9 @@ def value_to_bin(value, vmin, vmax, nbins):
     step = (vmax - vmin) / nbins
     return int((value - vmin) / step)
 
-def add_point(lat, lon, name, value, alt, vmin, vmax, nbins, filename="merge2.kml"):
+
+def add_point(lat, lon, name, value, alt, vmin, vmax, nbins, filename="merge2.kml", reprocess: bool = False,
+              compress: bool = False):
     """
     data_dict: {column_name: value, ...}
     """
@@ -249,8 +323,12 @@ def add_point(lat, lon, name, value, alt, vmin, vmax, nbins, filename="merge2.km
 <Placemark>
   <name>{name}</name>
   <styleUrl>#bin_{style_id}</styleUrl>
-  <ExtendedData><Data name="concentration">
+  <ExtendedData>
+  <Data name="Concentration">
     <value>{value}</value>
+  </Data>
+  <Data name="Altitude">
+    <value>{alt}</value>
   </Data>
   </ExtendedData>
   <Point>
@@ -260,10 +338,40 @@ def add_point(lat, lon, name, value, alt, vmin, vmax, nbins, filename="merge2.km
   </Point>
 </Placemark>
 """
+    placemark_reprocess = f"""
+<Placemark>
+  <name>{name}</name>
+  <styleUrl>#bin_{style_id}</styleUrl>
+  <ExtendedData>
+  <Data name="Concentration">
+    <value>{value}</value>
+  </Data>
+  <Data name="Altitude">
+    <value>{alt}</value>
+  </Data>
+  <Data name="lat">
+    <value>{lat}</value>
+  </Data>
+  <Data name="lon">
+    <value>{lon}</value>
+  </Data>
+  </ExtendedData>
+  <Point>
+    <extrude>1</extrude>
+    <altitudeMode>relativeToGround</altitudeMode>
+    <coordinates>{lon},{lat},{alt}</coordinates>
+  </Point>
+</Placemark>
+"""
+    if reprocess:
+        used_placemark = placemark_reprocess
+    else:
+        used_placemark = placemark
+
 
     new_text = text.replace(
         "<!-- INSERT_HERE -->",
-        placemark + "\n<!-- INSERT_HERE -->"
+        used_placemark + "\n<!-- INSERT_HERE -->"
     )
 
     with open(tmp, "w", encoding="utf-8") as f:
@@ -278,25 +386,8 @@ def add_point(lat, lon, name, value, alt, vmin, vmax, nbins, filename="merge2.km
             time.sleep(0.1)
     else:
         print(f"WARNING: Could not write {filename}")
+    return None
 
-def add_track_point(lat, lon, alt, filename):
-
-    tmp = filename + ".tmp"
-
-    coord = f"{lon},{lat},{alt}"
-
-    with open(filename, "r", encoding="utf-8") as f:
-        text = f.read()
-
-    new_text = text.replace(
-        "<!-- TRACK_INSERT -->",
-        coord + "\n<!-- TRACK_INSERT -->"
-    )
-
-    with open(tmp, "w", encoding="utf-8") as f:
-        f.write(new_text)
-
-    os.replace(tmp, filename)
     
 def update_current_position(config, lat, lon, alt, name, filename):
     tmp = filename + ".tmp"
@@ -337,7 +428,17 @@ def update_current_position(config, lat, lon, alt, name, filename):
     with open(tmp, "w", encoding="utf-8") as f:
         f.write(content)
 
-    os.replace(tmp, filename)
+    # os.replace(tmp, filename)
+    for _ in range(5):  # tries 5 times to write the file, incase the program is still writing the last file
+        try:
+            os.replace(tmp, filename)
+            break
+        except PermissionError:
+            time.sleep(0.1)
+    else:
+        print(f"WARNING: Could not write {filename}")
+    return None
+
         
 def write_current_pointer(all_files, active_index, output_file):
     """
@@ -384,25 +485,42 @@ def write_current_pointer(all_files, active_index, output_file):
     with open(tmp, "w", encoding="utf-8") as f:
         f.write(content)
 
-    os.replace(tmp, output_file)
+    # os.replace(tmp, output_file)
+    for _ in range(5):  # tries 5 times to write the file, incase the program is still writing the last file
+        try:
+            os.replace(tmp, output_file)
+            break
+        except PermissionError:
+            time.sleep(0.1)
+    else:
+        print(f"WARNING: Could not write {output_file}")
+    return None
 
-def extract_coordinates(cols, config, ):
 
+def extract_coordinates(cols, config, reverse=False):
     device = config['Default']['device']
 
     lat_idx = int(config[device]['lat'])
     lon_idx = int(config[device]['lon'])
     alt_idx = int(config[device]['alt'])
-    
-    # print(len(cols))
-    try: 
-        lat = float(cols[lat_idx])
-        lon = float(cols[lon_idx])
-        alt = float(cols[alt_idx])
-    except:
-        return None
-    
+
+    if reverse:
+        # To compensate if amount of data given from device varies by shifting given columns relative to end of cols.
+        # Will only work for external gps because of the fixed relativ idx to the end of cols
+        len_cols = len(cols)
+        max_idx = max(alt_idx, lat_idx, lon_idx)
+        offset_idx = len_cols - max_idx - 2
+        lat_idx += offset_idx
+        lon_idx += offset_idx
+        alt_idx += offset_idx
+    else:
+        pass
+
+    lat = float(cols[lat_idx])
+    lon = float(cols[lon_idx])
+    alt = float(cols[alt_idx])
     return lat, lon, alt
+
 
 def extract_species_values(cols, config):
     device = config['Default']['device']
@@ -420,15 +538,53 @@ def extract_species_values(cols, config):
         try:
             values[sp] = float(cols[col_index])
         except (ValueError, IndexError):
-            #continue
-            return None
-
+            continue
     return values
+
+
+
+def parse_timestamp(fname):
+    base = os.path.basename(fname)
+    timestamp_str = base.split("_")[0]  # YYMMDDtHHMMSS
+    return datetime.strptime(timestamp_str, "%y%m%dt%H%M%S")
+
+
+def find_closest_file(buffer, target_time):
+    closest = None
+    min_diff = None
+
+    for t, path in buffer:
+        diff = abs((t - target_time).total_seconds())
+
+        if min_diff is None or diff < min_diff:
+            min_diff = diff
+            closest = path
+    return closest, min_diff
+
+
+def override_config(config, value, header, variable, config_filename):
+    config[header][variable] = str(value)
+    with open(config_filename, 'w') as configfile:
+        config.write(configfile)
+
+
+def update_buffer_skip_files(config_filename, new_value):
+    with open(config_filename, "r") as f:
+        content = f.read()
+
+    content = content.replace(
+        f"buffer_skip_files : {new_value+1}",
+        f"buffer_skip_files : {new_value}"
+    )
+
+    with open(config_filename, "w") as f:
+        f.write(content)
+
 
 # ===============
 #  MAIN 
 # ===============
-def write_KML(config_filename):
+def write_KML(config_filename, compress: bool = False):
     
     config = read_config(config_filename)
     device = config['Default']['device']
@@ -438,52 +594,24 @@ def write_KML(config_filename):
     reprocessfolder = config['Paths']['reprocessfolder']
     bufferfolder = config['Paths']['remotefolder']
     kml_savefolder = config['Paths']['kmlpath']
-    flighttrack_buffer = config['Paths']['flighttrackfolder']
-    reprocess = eval(config['Paths']['reprocess'])
-    empty_reprocess_folder = eval(config['Paths']['empty_reprocess_folder'])
-    emtpy_remote_folder = eval(config['Paths']['emtpy_remote_folder'])
-
-    if empty_reprocess_folder:
-        if os.path.exists(reprocessfolder):
-            print(f'Deleting all files in {reprocessfolder}!')
-            shutil.rmtree(reprocessfolder)
-        else:
-            pass
-    elif not empty_reprocess_folder:
-        pass
+    if compress:
+        reprocess = True
+        reprocess_skip_files = 0
+        buffer_skip_files = 0
+        points_per_file = 100000000
     else:
-        raise ValueError(f'empty_reprocess_folder is either "True" or "False", currently {empty_reprocess_folder}')
-
-    if emtpy_remote_folder:
-        if os.path.exists(emtpy_remote_folder):
-            print(f'Deleting all files in {emtpy_remote_folder}!')
-            shutil.rmtree(emtpy_remote_folder)
-        else:
-            pass
-    elif not emtpy_remote_folder:
-        pass
-    else:
-        raise ValueError(f'emtpy_remote_folder is either "True" or "False", currently {emtpy_remote_folder}')
+        reprocess = eval(config['Paths']['reprocess'])
+        reprocess_skip_files = int(config['Paths']['reprocess_skip_files'])
+        buffer_skip_files = int(config['Paths']['buffer_skip_files'])
+        points_per_file = int(config['LogParams']['points_per_file'])
+    external_gps = eval(config[device]['external_gps'])
+    timelag = config[device].getint('timelag', fallback=3)
 
     if reprocess:
-        print('Clearing old KML files and reprocessing new KML files...')
         # Reset KML files
         if os.path.exists(kml_savefolder):
+            print('Clearing old KML files and reprocessing new KML files...')
             shutil.rmtree(kml_savefolder)
-
-        # Move LocalBuffer to Buffer
-        sync_buffer_to_local(reprocessfolder, bufferfolder, set())
-        print('Moved files from LocalBuffer to Buffer.')
-    elif not reprocess:
-        pass
-    else:
-        raise ValueError(f'reprocess is either "True" or "False", currently {reprocess}')
-
-    # Reset LocalBuffer for this run
-    #if os.path.exists(reprocessfolder):
-    #    shutil.rmtree(reprocessfolder)
-    #os.makedirs(reprocessfolder)
-
     os.makedirs(kml_savefolder, exist_ok=True)
     # -------------------------
     # Device settings
@@ -491,7 +619,7 @@ def write_KML(config_filename):
     species = config[device]['species'].split()
     nbins = config.getint(device, 'nbins')
 
-    print("Species:", species)
+    # print("Species:", species)
 
     # Read species ranges dynamically
     ranges = {}
@@ -507,10 +635,11 @@ def write_KML(config_filename):
 
         ranges[specie] = (vmin, vmax)
 
+
     # -------------------------
     # Initialize per-species state
     # -------------------------
-    points_per_file = 300
+    # points_per_file = 300
 
     state = {}
 
@@ -520,7 +649,7 @@ def write_KML(config_filename):
 
         kmlfile = f"{kml_savefolder}/{specie}_{file_index}.kml"
 
-        init_kml(kmlfile, nbins, config)
+        init_kml(kmlfile, nbins, config, compress)
 
         vmin, vmax = ranges[specie]
 
@@ -540,61 +669,62 @@ def write_KML(config_filename):
             active_index=0,
             output_file=pointer_file
         )
-    # ----------------------------
-    # Initialize flight track
-    # ----------------------------
-    flight_state = {
-    "file_index": 1,
-    "point_counter": 0,
-    "kmlfile": f"{kml_savefolder}/flighttrack_1.kml",
-    "all_files": [f"{kml_savefolder}/flighttrack_1.kml"]
-    }
-    
-    init_track_kml(flight_state["kmlfile"])
 
-    write_current_pointer(
-        flight_state["all_files"],
-        active_index=0,
-        output_file=f"{kml_savefolder}/current_flighttrack.kml"
-    )
-    
     # ----------------------------------
     # Initialize current flight position
     # -----------------------------------
+
     current_position_kml = f"{kml_savefolder}/current_position.kml"
     init_current_kml(config, current_position_kml)   
-     
-     
-     
+
     # =============================+
-    
     # Realtime loop
-    
     # =============================+
-    
-    # copied_files = set(os.listdir(bufferfolder))
     copied_files = set()
-    #copied_track_files = set(os.listdir(flighttrack_buffer))
-    copied_track_files = set()
+    time_buffer = deque()
 
-    
+    initial_reprocess = reprocess
+
+    time_start_loop = None
+    time_end_loop = None
+
     while True:
+        if buffer_skip_files != 0:
+            time_start_loop = time.time()
 
-        # Copy only new buffer files
-        new_files = sync_buffer_to_local(
-            buffer_dir=bufferfolder,
-            local_dir=reprocessfolder,
-            copied=copied_files
-        )
-        new_track_files = sync_buffer_to_local(
-            buffer_dir=flighttrack_buffer,
-            local_dir=reprocessfolder + "_track",
-            copied=copied_track_files
-        )
-        
-        os.makedirs(reprocessfolder , exist_ok=True)
-        os.makedirs(reprocessfolder + "_track", exist_ok=True)
-        
+        # Moving skipped files from Buffer to LocalBuffer when program is not busy to clean up buffer.
+        # If previous processing took less than 0.8 seconds enough time should be free to move one file without blocking
+        # the rest of the program.
+        if time_end_loop is not None and buffer_skip_files != 0:
+            time_delta = time_end_loop - time_start_loop
+            if time_delta < 0.8:
+                moved_files = sync_buffer_to_local(bufferfolder, reprocessfolder, set(), 0, 1)
+                for f in moved_files:
+                    #print(f'Moved {f} without creating KML')
+                    pass
+                buffer_skip_files -= 1
+                # Update the number of files left to skip in the config file to be consistent after restart
+                update_buffer_skip_files(config_filename, buffer_skip_files)
+
+        os.makedirs(reprocessfolder, exist_ok=True)
+        if initial_reprocess:
+            # Mark files in LocalBuffer as new_files
+            new_files = reprocess_file_reader(reprocessfolder, copied_files, reprocess_skip_files,)
+
+            # Set reprocess as False to only reprocess them once!
+            initial_reprocess = False
+
+        elif not initial_reprocess:
+            # Copy only new buffer files
+            new_files = sync_buffer_to_local(
+                buffer_dir=bufferfolder,
+                local_dir=reprocessfolder,
+                copied=copied_files,
+                start_index=buffer_skip_files,
+            )
+        else:
+            raise ValueError(f'reprocess is either "True" or "False", currently {reprocess}')
+
         for fname in new_files:
 
             with open(os.path.join(reprocessfolder, fname), "r") as f:
@@ -603,40 +733,103 @@ def write_KML(config_filename):
             line = line.replace(",", "")
             cols = line.split()
 
-            coords = extract_coordinates(cols, config)
-            if coords is None:
-                print(f"Skipping {fname}: invalid coordinates")
-                continue
-            
-            lat, lon, alt = coords
+            # Trying to set GPS DATA and values
+            try:
+                lat, lon, alt = extract_coordinates(cols, config)
+                values = extract_species_values(cols, config)
+            except (IndexError, ValueError):
+                if external_gps:
+                    try:
+                        lat, lon, alt = extract_coordinates(cols, config, reverse=True)
+                        values = extract_species_values(cols, config)
+                        print('Different amount of data given from Device than expected, trying to adjust...!')
+                    except (IndexError, ValueError):
+                        print('GPS Index Problem, skipping file!')
+                        continue
+                else:
+                    print('GPS Index Problem, skipping file!')
+                    continue
 
-            values = extract_species_values(cols, config)
-            
-            if values is None:
-                print(f"SKIP FILE {fname}")
+            if lat == 0.0 or lon == 0.0:
+                print('One or more GPS at 0°, skipping file!')
                 continue
-    
+
+            # ------------------
+            # Timelag
+            # ------------------
+
+            full_path = os.path.join(reprocessfolder, fname)
+            current_time = parse_timestamp(fname)
+
+            # Add good data point to time_buffer
+            time_buffer.append((current_time, full_path))
+
+            # Keep time_buffer with only needed times
+            while len(time_buffer) > timelag * 5:
+                time_buffer.popleft()
+
+            try:
+                target_time = current_time - timedelta(seconds=timelag)
+                lagged_file, time_error = find_closest_file(time_buffer, target_time)
+
+                if lagged_file is not None:
+                    if time_error not in [0.0, 1.0]:
+                        print(f'Timelag off by {time_error:.0f} seconds from selected device timelag.')
+
+                    with open(lagged_file, "r") as f:
+                        lag_line = f.readline().strip()
+
+                    lag_line = lag_line.replace(",", "")
+                    lag_cols = lag_line.split()
+
+                    lag_lat, lag_lon, lag_alt = extract_coordinates(lag_cols, config)
+
+                    lat, lon, alt = lag_lat, lag_lon, lag_alt
+
+            except Exception as e:
+                print(f'Timelag failed, Exception: {e}')
+
+
             # Update all species
             for specie in species:
 
-                value = values[specie]
+                try:
+                    value = values[specie]
+                except KeyError:
+                    print(f'{fname} had index problems, skipping file!')
+                    continue
                 s = state[specie]
+
+                try:
+                    _ = int(lat)
+                    _ = int(lon)
+                    _ = int(alt)
+                except ValueError:
+                    print('GPS Value Error, could not convert to int!')
+                    continue
 
                 add_point(
                     lat,
                     lon,
-                    cols[0],
+                    cols[1],
                     value,
                     alt,
                     s["vmin"],
                     s["vmax"],
                     nbins,
-                    s["kmlfile"]
+                    s["kmlfile"],
+                    reprocess,
+                    compress
                 )
+
+                try:
+                    print(f'{specie}: {value}')
+                except KeyError:
+                    pass
 
                 s["point_counter"] += 1
 
-                # Rotate file after 300 points
+                # Rotate file after points_per_file amount of points
                 if s["point_counter"] >= points_per_file:
 
                     s["point_counter"] = 0
@@ -644,7 +837,7 @@ def write_KML(config_filename):
 
                     newfile = f"{kml_savefolder}/{specie}_{s['file_index']}.kml"
 
-                    init_kml(newfile, nbins, config)
+                    init_kml(newfile, nbins, config, False)
 
                     s["kmlfile"] = newfile
                     s["all_files"].append(newfile)
@@ -655,23 +848,6 @@ def write_KML(config_filename):
                         output_file=f"{kml_savefolder}/current_{specie}.kml"
                     )
 
-            print(f"Processed {fname}")
-
-        # For flightrack  and current flight position 
-        for fname in new_track_files:
-
-            with open(os.path.join(reprocessfolder + "_track", fname), "r") as f:
-                line = f.readline().strip()
-
-            cols = line.split()
-
-            try:
-                lat = float(cols[1])
-                lon = float(cols[2])
-                alt = float(cols[3])
-            except (ValueError, IndexError):
-                continue
-            
             # current flight position
             # KML file update
             update_current_position(
@@ -681,39 +857,17 @@ def write_KML(config_filename):
                 alt,
                 name="Current Aircraft Position",
                 filename=current_position_kml
-            )    
-            
-            # flighttrack
-            # add point
-            add_track_point(
-                lat,
-                lon,
-                alt,
-                flight_state["kmlfile"]
             )
 
-            flight_state["point_counter"] += 1
-            
-            # rotate file after 300 points (only for flighttrack)
-            if flight_state["point_counter"] >= points_per_file:
+            print(f"Processed {fname}")
 
-                flight_state["point_counter"] = 0
-                flight_state["file_index"] += 1
+        if buffer_skip_files != 0:
+            time_end_loop = time.time()
 
-                newfile = f"{kml_savefolder}/flighttrack_{flight_state['file_index']}.kml"
+        if compress:
+            print('KML creation finished')
+            return config, kml_savefolder, species
 
-                init_track_kml(newfile)
 
-                flight_state["kmlfile"] = newfile
-                flight_state["all_files"].append(newfile)
-
-                write_current_pointer(
-                    flight_state["all_files"],
-                    active_index=flight_state["file_index"] - 1,
-                    output_file=f"{kml_savefolder}/current_flighttrack.kml"
-                )
-                
-                
 if __name__ == '__main__':
-    while True :
-        write_KML('insitu.cfg')                   
+    write_KML('insitu.cfg')

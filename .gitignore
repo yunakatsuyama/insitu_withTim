@@ -15,3 +15,12 @@ Thumbs.db
 
 # VS Code
 .vscode/
+
+Data
+.idea
+colorbar_*
+icon_folder/
+plot_colorbars.py
+realtime_*
+temp.py
+compressed/
