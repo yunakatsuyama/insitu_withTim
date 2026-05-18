@@ -725,7 +725,7 @@ def write_KML(config_filename, compress: bool = False):
         else:
             raise ValueError(f'reprocess is either "True" or "False", currently {reprocess}')
 
-        for fname in new_files:
+        for i_fname, fname in enumerate(new_files):
 
             with open(os.path.join(reprocessfolder, fname), "r") as f:
                 line = f.readline().strip()
@@ -850,14 +850,16 @@ def write_KML(config_filename, compress: bool = False):
 
             # current flight position
             # KML file update
-            update_current_position(
-                config,
-                lat,
-                lon,
-                alt,
-                name="Current Aircraft Position",
-                filename=current_position_kml
-            )
+
+            if not compress or (compress and i_fname == len(new_files)):
+                update_current_position(
+                    config,
+                    lat,
+                    lon,
+                    alt,
+                    name="Current Aircraft Position",
+                    filename=current_position_kml
+                )
 
             print(f"Processed {fname}")
 
